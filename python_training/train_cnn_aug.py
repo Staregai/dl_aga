@@ -11,7 +11,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from room_classifier.data import default_data_dir, load_or_create_split, make_loaders, split_summary
 from room_classifier.models import build_custom_cnn, count_parameters
-from room_classifier.train_utils import get_device, set_seed, train_model
+from room_classifier.train_utils import (
+    MixConfig,
+    SoftTargetCrossEntropy,
+    build_epoch_scheduler,
+    get_device,
+    set_seed,
+    train_model,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,6 +35,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dropout", type=float, default=0.30)
     parser.add_argument("--label-smoothing", type=float, default=0.08)
     parser.add_argument("--augment-strength", default="strong", choices=["basic", "strong"])
+    parser.add_argument("--scheduler", default="cosine", choices=["cosine", "plateau"])
+    parser.add_argument("--warmup-epochs", type=int, default=10)
+    parser.add_argument("--min-lr", type=float, default=1e-6)
+    parser.add_argument("--ema-decay", type=float, default=0.999)
+    parser.add_argument("--mixup-alpha", type=float, default=0.0)
+    parser.add_argument("--cutmix-alpha", type=float, default=0.0)
+    parser.add_argument("--mix-prob", type=float, default=0.0)
+    parser.add_argument("--cutmix-prob", type=float, default=0.7)
     parser.add_argument("--patience", type=int, default=60)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=0)
@@ -63,9 +78,23 @@ def main() -> None:
     device = get_device(args.device)
     model = build_custom_cnn(len(info.class_names), dropout=args.dropout, arch=args.arch)
     print(f"model=room_resnet_{args.arch} trainable_params={count_parameters(model):,}")
-    criterion = torch.nn.CrossEntropyLoss(weight=weights.to(device), label_smoothing=args.label_smoothing)
+    criterion = SoftTargetCrossEntropy(weight=weights.to(device), label_smoothing=args.label_smoothing)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=15)
+    scheduler = build_epoch_scheduler(
+        optimizer,
+        scheduler_name=args.scheduler,
+        epochs=args.epochs,
+        warmup_epochs=args.warmup_epochs,
+        min_lr=args.min_lr,
+        plateau_patience=15,
+    )
+    mix_config = MixConfig(
+        num_classes=len(info.class_names),
+        mixup_alpha=args.mixup_alpha,
+        cutmix_alpha=args.cutmix_alpha,
+        mix_prob=args.mix_prob,
+        cutmix_prob=args.cutmix_prob,
+    )
 
     metadata = {
         "model_type": "cnn_aug",
@@ -78,6 +107,15 @@ def main() -> None:
         "train_counts": info.train_counts,
         "exclude_classes": exclude_classes,
         "seed": args.seed,
+        "scheduler": args.scheduler,
+        "warmup_epochs": args.warmup_epochs,
+        "min_lr": args.min_lr,
+        "ema_decay": args.ema_decay,
+        "mixup_alpha": args.mixup_alpha,
+        "cutmix_alpha": args.cutmix_alpha,
+        "mix_prob": args.mix_prob,
+        "cutmix_prob": args.cutmix_prob,
+        "uses_augmentation": True,
     }
     checkpoint_name = "cnn_aug_best.pt"
     train_model(
@@ -91,6 +129,8 @@ def main() -> None:
         patience=args.patience,
         checkpoint_path=args.output_dir / checkpoint_name,
         metadata=metadata,
+        mix_config=mix_config,
+        ema_decay=args.ema_decay,
     )
 
 

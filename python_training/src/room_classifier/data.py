@@ -211,6 +211,19 @@ def build_transforms(
     )
 
 
+def build_tta_transform(img_size: int) -> transforms.Compose:
+    resize_size = int(round(img_size * 1.14))
+    return transforms.Compose(
+        [
+            transforms.Resize((resize_size, resize_size)),
+            transforms.RandomCrop(img_size),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
+    )
+
+
 def class_weights(train_frame: pd.DataFrame, class_names: list[str]) -> torch.Tensor:
     counts = train_frame["label"].value_counts().to_dict()
     total = sum(counts.values())

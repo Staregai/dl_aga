@@ -29,6 +29,8 @@ BATCH_SIZE="${BATCH_SIZE:-32}"
 EPOCHS="${EPOCHS:-500}"
 PATIENCE="${PATIENCE:-60}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
+TTA_PASSES="${TTA_PASSES:-1}"
+HARD_EXAMPLES="${HARD_EXAMPLES:-80}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 mkdir -p "$OUTPUT_DIR" "$REPORT_DIR"
@@ -43,6 +45,7 @@ echo "data_dir=$DATA_DIR"
 echo "split_csv=$SPLIT_CSV"
 echo "output_dir=$OUTPUT_DIR"
 echo "img_size=$IMG_SIZE batch_size=$BATCH_SIZE epochs=$EPOCHS patience=$PATIENCE num_workers=$NUM_WORKERS"
+echo "tta_passes=$TTA_PASSES hard_examples=$HARD_EXAMPLES"
 echo "extra_args=$EXTRA_ARGS"
 nvidia-smi || true
 
@@ -79,6 +82,8 @@ python evaluate_checkpoints.py \
   --split test \
   --batch-size "$BATCH_SIZE" \
   --num-workers "$NUM_WORKERS" \
-  --device cuda
+  --device cuda \
+  --tta-passes "$TTA_PASSES" \
+  --hard-examples "$HARD_EXAMPLES"
 
 echo "finished_at=$(date -Is)"

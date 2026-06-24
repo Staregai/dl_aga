@@ -11,8 +11,8 @@ Domyślnie usuwana jest klasa `bath`, żeby zachować porównywalność z notebo
 ## Modele
 
 - `train_mlp.py` - mocniejszy baseline MLP na pikselach, `128x128`.
-- `train_cnn.py` - własny `room_resnet_small` trenowany od zera: bloki rezydualne, BatchNorm, Squeeze-and-Excitation, global average pooling, `224x224`.
-- `train_cnn_aug.py` - ta sama własna architektura `room_resnet_small`, ale z augmentacją danych w treningu.
+- `train_cnn.py` - własny `room_resnet_small/medium/large` trenowany od zera: bloki rezydualne, BatchNorm, Squeeze-and-Excitation, global average pooling. Ten wariant nie używa żadnych augmentacji danych.
+- `train_cnn_aug.py` - ta sama własna architektura `room_resnet_small/medium/large`, ale z augmentacją danych w treningu.
 
 Jeżeli chcesz porównać wpływ augmentacji, najważniejszy jest trzeci wariant. Domyślnie używa profilu `strong`:
 
@@ -21,6 +21,8 @@ python train_cnn_aug.py
 ```
 
 Domyślnie `CNN` i `CNN+aug` mają wysoki limit `--epochs 500`. Trening kończy early stopping: `patience=45` dla CNN i `patience=60` dla CNN+aug. To jest celowo łagodne, bo modele są trenowane od zera.
+
+Nowsze treningi CNN używają też EMA wag i schedulera cosine z warmupem. To nie zmienia danych wejściowych, więc zwykły CNN pozostaje wariantem bez augmentacji. Dodatkowe techniki mieszania obrazów (`MixUp`/`CutMix`) są dostępne tylko w `train_cnn_aug.py`.
 
 Słabszy profil, bliższy klasycznym augmentacjom:
 
@@ -80,6 +82,15 @@ bash cluster/submit_grid_istarega.sh
 ```
 
 Grid testuje `room_resnet_medium` i `room_resnet_large` trenowane od zera oraz kilka ustawień LR, weight decay, dropout, label smoothing i profilu augmentacji.
+
+Najmocniejsza seria eksperymentów:
+
+```bash
+bash cluster/submit_improved_mbober.sh
+bash cluster/submit_improved_istarega.sh
+```
+
+Ta seria uruchamia zwykłe CNN bez augmentacji oraz CNN+aug z EMA, cosine warmup, mocniejszą rozdzielczością, MixUp/CutMix i TTA w ewaluacji. Dodatkowo `submit_improved_mbober.sh` odpala osobny job ensemble dla najlepszych modeli CNN+aug.
 
 ## Notebook ewaluacyjny
 

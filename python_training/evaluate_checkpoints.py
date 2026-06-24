@@ -23,6 +23,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--tta-passes", type=int, default=1)
+    parser.add_argument("--hard-examples", type=int, default=80)
     return parser.parse_args()
 
 
@@ -43,6 +45,8 @@ def main() -> None:
             num_workers=args.num_workers,
             device_name=args.device,
             output_dir=args.output_dir,
+            tta_passes=args.tta_passes,
+            hard_examples=args.hard_examples,
         )
         rows.append(
             {
@@ -52,6 +56,7 @@ def main() -> None:
                 "split": metrics["split"],
                 "accuracy": metrics["accuracy"],
                 "macro_f1": metrics["macro_f1"],
+                "tta_passes": metrics["tta_passes"],
             }
         )
 
