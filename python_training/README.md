@@ -92,6 +92,15 @@ bash cluster/submit_improved_istarega.sh
 
 Ta seria uruchamia zwykłe CNN bez augmentacji oraz CNN+aug z EMA, cosine warmup, mocniejszą rozdzielczością, MixUp/CutMix i TTA w ewaluacji. Dodatkowo `submit_improved_mbober.sh` odpala osobny job ensemble dla najlepszych modeli CNN+aug.
 
+Właściwy grid search po hiperparametrach:
+
+```bash
+bash cluster/submit_hparam_grid_cnn_istarega.sh
+bash cluster/submit_hparam_grid_aug_mbober.sh
+```
+
+`submit_hparam_grid_cnn_istarega.sh` odpala 16 konfiguracji zwykłego CNN bez jakichkolwiek augmentacji: `arch x lr x weight_decay x dropout`. `submit_hparam_grid_aug_mbober.sh` odpala 16 konfiguracji CNN+aug: `lr x weight_decay x dropout x mix_prob`, z architekturą `large`, `256x256`, EMA, cosine warmup, MixUp/CutMix i TTA w ewaluacji.
+
 ## Notebook ewaluacyjny
 
 Otwórz:
