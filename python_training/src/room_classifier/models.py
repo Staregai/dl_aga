@@ -75,32 +75,90 @@ class ResidualBlock(nn.Module):
         return self.act(out)
 
 
-class RoomResNetSmall(nn.Module):
-    """Small ResNet-style CNN trained from scratch for room classification."""
+ARCH_CONFIGS = {
+    "small": {
+        "stem_channels": 32,
+        "stage_channels": (48, 96, 192, 320),
+        "stage_blocks": (2, 2, 2, 2),
+        "stage_dropout": (0.03, 0.06, 0.10, 0.14),
+        "head_hidden": 160,
+    },
+    "medium": {
+        "stem_channels": 48,
+        "stage_channels": (64, 128, 256, 384),
+        "stage_blocks": (2, 2, 3, 2),
+        "stage_dropout": (0.04, 0.08, 0.12, 0.16),
+        "head_hidden": 192,
+    },
+    "large": {
+        "stem_channels": 64,
+        "stage_channels": (80, 160, 320, 512),
+        "stage_blocks": (2, 3, 4, 2),
+        "stage_dropout": (0.05, 0.09, 0.14, 0.18),
+        "head_hidden": 256,
+    },
+}
 
-    def __init__(self, num_classes: int, dropout: float = 0.30) -> None:
+
+class RoomResNet(nn.Module):
+    """ResNet-style CNN trained from scratch for room classification."""
+
+    def __init__(self, num_classes: int, arch: str = "small", dropout: float = 0.30) -> None:
         super().__init__()
+        if arch not in ARCH_CONFIGS:
+            raise ValueError(f"Unsupported CNN arch: {arch}. Choose one of: {sorted(ARCH_CONFIGS)}")
+        cfg = ARCH_CONFIGS[arch]
+        stem_channels = cfg["stem_channels"]
+        stage_channels = cfg["stage_channels"]
+        stage_blocks = cfg["stage_blocks"]
+        stage_dropout = cfg["stage_dropout"]
+        head_hidden = cfg["head_hidden"]
+
         self.stem = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(3, stem_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(stem_channels),
             nn.SiLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(stem_channels, stem_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(stem_channels),
             nn.SiLU(inplace=True),
         )
-        self.stage1 = self._make_stage(32, 48, blocks=2, stride=2, dropout=0.03)
-        self.stage2 = self._make_stage(48, 96, blocks=2, stride=2, dropout=0.06)
-        self.stage3 = self._make_stage(96, 192, blocks=2, stride=2, dropout=0.10)
-        self.stage4 = self._make_stage(192, 320, blocks=2, stride=2, dropout=0.14)
+        self.stage1 = self._make_stage(
+            stem_channels,
+            stage_channels[0],
+            blocks=stage_blocks[0],
+            stride=2,
+            dropout=stage_dropout[0],
+        )
+        self.stage2 = self._make_stage(
+            stage_channels[0],
+            stage_channels[1],
+            blocks=stage_blocks[1],
+            stride=2,
+            dropout=stage_dropout[1],
+        )
+        self.stage3 = self._make_stage(
+            stage_channels[1],
+            stage_channels[2],
+            blocks=stage_blocks[2],
+            stride=2,
+            dropout=stage_dropout[2],
+        )
+        self.stage4 = self._make_stage(
+            stage_channels[2],
+            stage_channels[3],
+            blocks=stage_blocks[3],
+            stride=2,
+            dropout=stage_dropout[3],
+        )
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
-            nn.BatchNorm1d(320),
+            nn.BatchNorm1d(stage_channels[-1]),
             nn.Dropout(dropout),
-            nn.Linear(320, 160),
+            nn.Linear(stage_channels[-1], head_hidden),
             nn.SiLU(inplace=True),
             nn.Dropout(dropout * 0.5),
-            nn.Linear(160, num_classes),
+            nn.Linear(head_hidden, num_classes),
         )
         self.apply(self._init_weights)
 
@@ -137,12 +195,35 @@ class RoomResNetSmall(nn.Module):
         return self.head(x)
 
 
+class RoomResNetSmall(RoomResNet):
+    """Backward-compatible alias for the original small architecture."""
+
+    def __init__(self, num_classes: int, dropout: float = 0.30) -> None:
+        super().__init__(num_classes=num_classes, arch="small", dropout=dropout)
+
+
 def build_mlp(num_classes: int, img_size: int, dropout: float = 0.45) -> nn.Module:
     return MLPClassifier(num_classes=num_classes, img_size=img_size, dropout=dropout)
 
 
-def build_custom_cnn(num_classes: int, dropout: float = 0.30) -> nn.Module:
-    return RoomResNetSmall(num_classes=num_classes, dropout=dropout)
+def normalize_cnn_arch(arch: str | None) -> str:
+    if arch in (None, "", "room_resnet_small"):
+        return "small"
+    if arch in ("room_resnet_medium", "medium"):
+        return "medium"
+    if arch in ("room_resnet_large", "large"):
+        return "large"
+    if arch == "small":
+        return "small"
+    raise ValueError(f"Unsupported CNN arch: {arch}")
+
+
+def build_custom_cnn(num_classes: int, dropout: float = 0.30, arch: str = "small") -> nn.Module:
+    return RoomResNet(num_classes=num_classes, arch=normalize_cnn_arch(arch), dropout=dropout)
+
+
+def count_parameters(model: nn.Module) -> int:
+    return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
 
 
 def build_from_metadata(metadata: dict[str, Any], num_classes: int) -> nn.Module:
@@ -150,7 +231,15 @@ def build_from_metadata(metadata: dict[str, Any], num_classes: int) -> nn.Module
     if model_type == "mlp":
         return build_mlp(num_classes=num_classes, img_size=int(metadata["img_size"]), dropout=float(metadata["dropout"]))
     if model_type == "cnn":
-        return build_custom_cnn(num_classes=num_classes, dropout=float(metadata["dropout"]))
+        return build_custom_cnn(
+            num_classes=num_classes,
+            dropout=float(metadata["dropout"]),
+            arch=metadata.get("arch", "small"),
+        )
     if model_type == "cnn_aug":
-        return build_custom_cnn(num_classes=num_classes, dropout=float(metadata["dropout"]))
+        return build_custom_cnn(
+            num_classes=num_classes,
+            dropout=float(metadata["dropout"]),
+            arch=metadata.get("arch", "small"),
+        )
     raise ValueError(f"Unsupported model_type in checkpoint: {model_type}")

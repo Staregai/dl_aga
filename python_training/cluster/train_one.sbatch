@@ -43,6 +43,7 @@ echo "data_dir=$DATA_DIR"
 echo "split_csv=$SPLIT_CSV"
 echo "output_dir=$OUTPUT_DIR"
 echo "img_size=$IMG_SIZE batch_size=$BATCH_SIZE epochs=$EPOCHS patience=$PATIENCE num_workers=$NUM_WORKERS"
+echo "extra_args=$EXTRA_ARGS"
 nvidia-smi || true
 
 python - <<'PY'

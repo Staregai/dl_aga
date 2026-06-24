@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from room_classifier.data import default_data_dir, load_or_create_split, make_loaders, split_summary
-from room_classifier.models import build_custom_cnn
+from room_classifier.models import build_custom_cnn, count_parameters
 from room_classifier.train_utils import get_device, set_seed, train_model
 
 
@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--img-size", type=int, default=224)
     parser.add_argument("--lr", type=float, default=8e-4)
     parser.add_argument("--weight-decay", type=float, default=2e-4)
+    parser.add_argument("--arch", default="medium", choices=["small", "medium", "large"])
     parser.add_argument("--dropout", type=float, default=0.30)
     parser.add_argument("--label-smoothing", type=float, default=0.05)
     parser.add_argument("--patience", type=int, default=45)
@@ -58,16 +59,18 @@ def main() -> None:
     )
 
     device = get_device(args.device)
-    model = build_custom_cnn(len(info.class_names), dropout=args.dropout)
+    model = build_custom_cnn(len(info.class_names), dropout=args.dropout, arch=args.arch)
+    print(f"model=room_resnet_{args.arch} trainable_params={count_parameters(model):,}")
     criterion = torch.nn.CrossEntropyLoss(weight=weights.to(device), label_smoothing=args.label_smoothing)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=12)
 
     metadata = {
         "model_type": "cnn",
-        "arch": "room_resnet_small",
+        "arch": f"room_resnet_{args.arch}",
         "img_size": args.img_size,
         "dropout": args.dropout,
+        "trainable_params": count_parameters(model),
         "class_names": info.class_names,
         "train_counts": info.train_counts,
         "exclude_classes": exclude_classes,

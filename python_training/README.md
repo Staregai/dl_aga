@@ -72,6 +72,15 @@ bash cluster/submit_istarega.sh
 
 `submit_mbober.sh` odpala CNN i CNN+aug na `224x224`; `submit_istarega.sh` odpala MLP na `128x128`.
 
+Do mocniejszego przeszukania hiperparametrów:
+
+```bash
+bash cluster/submit_grid_mbober.sh
+bash cluster/submit_grid_istarega.sh
+```
+
+Grid testuje `room_resnet_medium` i `room_resnet_large` trenowane od zera oraz kilka ustawień LR, weight decay, dropout, label smoothing i profilu augmentacji.
+
 ## Notebook ewaluacyjny
 
 Otwórz:
