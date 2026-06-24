@@ -1,0 +1,297 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[polish]{babel}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\geometry{margin=2.5cm}
+\defaultfontfeatures{Ligatures=TeX}
+\setmainfont{Arial}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black
+}
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.18}
+\sloppy
+
+\title{Raport projektowy: klasyfikacja obrazów pomieszczeń przy użyciu głębokich sieci neuronowych}
+\author{Michał Dyło, Agnieszka Wardak}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Wprowadzenie i opis zagadnienia}
+
+Celem projektu jest zbudowanie modelu klasyfikującego zdjęcia pomieszczeń na podstawie obrazu RGB. Zadanie należy do obszaru widzenia maszynowego, ale jest trudniejsze niż prosta klasyfikacja pojedynczych obiektów, ponieważ klasy pomieszczeń mają wysoką wariancję wewnątrzklasową. Ta sama kategoria może występować pod wieloma kątami, w różnym oświetleniu i z różnym układem mebli. Dodatkowo pomieszczenia dzielą wiele elementów wizualnych: stół może pojawić się w jadalni, kuchni i salonie, a nowoczesne wnętrza często łączą funkcje kilku pomieszczeń.
+
+W projekcie porównano trzy podejścia o rosnącej zdolności modelowania struktury obrazu:
+\begin{itemize}
+  \item wielowarstwowy perceptron MLP jako model bazowy,
+  \item sieć konwolucyjną CNN,
+  \item sieć CNN trenowaną z augmentacją danych.
+\end{itemize}
+
+Wszystkie obrazy zostały przeskalowane do rozmiaru \(64 \times 64\) pikseli. Tak mała rozdzielczość ogranicza koszt obliczeniowy, ale utrudnia klasyfikację, ponieważ część detali wyposażenia zostaje utracona.
+
+\section{Opis i eksploracyjna analiza danych}
+
+Wykorzystano zbiór \textit{House Rooms \& Streets Image Dataset} z Kaggle \cite{kaggle_dataset}. Dataset zawiera dwa katalogi: \texttt{house\_data} oraz \texttt{street\_data}. W projekcie użyto wyłącznie katalogu \texttt{house\_data}, który zawiera zdjęcia wnętrz w pięciu klasach: \texttt{bath}, \texttt{bed}, \texttt{din}, \texttt{kitchen}, \texttt{living}.
+
+\begin{table}[H]
+\centering
+\caption{Liczebność klas w katalogu \texttt{house\_data}.}
+\begin{tabular}{lr}
+\toprule
+Klasa & Liczba obrazów \\
+\midrule
+\texttt{bath} & 605 \\
+\texttt{bed} & 1248 \\
+\texttt{din} & 1158 \\
+\texttt{kitchen} & 965 \\
+\texttt{living} & 1273 \\
+\midrule
+Razem & 5249 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\textwidth]{figures/notebook_cell_09_output_02.png}
+\caption{Rozkład liczby zdjęć w klasach przed usunięciem klasy \texttt{bath}.}
+\end{figure}
+
+Oryginalne obrazy mają rozdzielczość \(224 \times 224\) pikseli. Po analizie liczebności odrzucono klasę \texttt{bath}. Po tej operacji problem sprowadzono do klasyfikacji czterech klas: \texttt{bed}, \texttt{din}, \texttt{kitchen}, \texttt{living}. Liczba obrazów użytych w treningu wyniosła 4644.
+
+\begin{table}[H]
+\centering
+\caption{Podział danych po usunięciu klasy \texttt{bath}.}
+\begin{tabular}{lrr}
+\toprule
+Podzbiór & Udział & Liczba obrazów \\
+\midrule
+Treningowy & 70\% & 3250 \\
+Walidacyjny & 15\% & 697 \\
+Testowy & 15\% & 697 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/sample_rooms_grid.png}
+\caption{Przykładowe obrazy z klas użytych w notebooku.}
+\end{figure}
+
+Preprocessing obejmował:
+\begin{itemize}
+  \item wczytanie plików \texttt{.jpg},
+  \item wyodrębnienie etykiety z prefiksu nazwy pliku,
+  \item przeskalowanie obrazu do \(64 \times 64\),
+  \item konwersję do tensora \texttt{Float32},
+  \item zmianę układu kanałów do formatu \texttt{(wysokosc, szerokosc, kanaly, batch)},
+  \item kodowanie etykiet w reprezentacji one-hot.
+\end{itemize}
+
+\section{Architektury sieci i procedura uczenia}
+
+Do trenowania modeli użyto biblioteki Flux.jl. Minimalizowaną funkcją straty była entropia krzyżowa dla logitów:
+\[
+\mathcal{L}(y, \hat{z}) = - \sum_i y_i \log \left(\operatorname{softmax}(\hat{z})_i\right),
+\]
+gdzie \(y\) oznacza prawdziwą etykietę w formacie one-hot, a \(\hat{z}\) oznacza logity modelu. W warstwach ukrytych stosowano aktywację ReLU:
+\[
+\operatorname{ReLU}(x) = \max(0, x).
+\]
+
+\subsection{Model 1: MLP}
+
+Model MLP potraktowano jako baseline. Obraz \(64 \times 64 \times 3\) został spłaszczony do wektora o długości 12288. Przetestowano trzy topologie:
+
+\begin{table}[H]
+\centering
+\caption{Topologie MLP.}
+\begin{tabular}{p{0.18\textwidth}p{0.70\textwidth}}
+\toprule
+Topologia & Architektura \\
+\midrule
+1 & Flatten \(\rightarrow\) Dense(12288, 512) \(\rightarrow\) Dropout \(\rightarrow\) Dense(512, 4) \\
+2 & Flatten \(\rightarrow\) Dense(12288, 256) \(\rightarrow\) Dropout \(\rightarrow\) Dense(256, 64) \(\rightarrow\) Dropout \(\rightarrow\) Dense(64, 4) \\
+3 & Flatten \(\rightarrow\) Dense(12288, 128) \(\rightarrow\) Dropout \(\rightarrow\) Dense(128, 64) \(\rightarrow\) Dense(64, 32) \(\rightarrow\) Dense(32, 4) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dla MLP przeszukano batch size \(\{32,64\}\), learning rate \(\{0.001,0.0005,0.0001\}\), dropout \(0.3\) oraz trzy topologie. Najlepszy wynik walidacyjny uzyskała topologia 1 dla batch size 32, learning rate 0.0001 i dropout 0.3.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/notebook_cell_23_output_01.png}
+\caption{Krzywe straty i accuracy dla najlepszego MLP z grid search.}
+\end{figure}
+
+\subsection{Model 2: CNN}
+
+Drugi model wykorzystywał warstwy konwolucyjne, które zachowują lokalną strukturę obrazu. Przetestowano trzy topologie CNN:
+
+\begin{table}[H]
+\centering
+\caption{Topologie CNN.}
+\begin{tabular}{p{0.18\textwidth}p{0.70\textwidth}}
+\toprule
+Topologia & Architektura \\
+\midrule
+1 & Conv(3x3, 16) \(\rightarrow\) MaxPool \(\rightarrow\) Conv(3x3, 32) \(\rightarrow\) MaxPool \(\rightarrow\) Conv(3x3, 64) \(\rightarrow\) MaxPool \(\rightarrow\) Dense(128) \(\rightarrow\) Dense(4) \\
+2 & Conv(3x3, 16) \(\rightarrow\) Conv(3x3, 16) \(\rightarrow\) MaxPool \(\rightarrow\) Conv(3x3, 32) \(\rightarrow\) Conv(3x3, 32) \(\rightarrow\) MaxPool \(\rightarrow\) Dense(256) \(\rightarrow\) Dense(4) \\
+3 & Conv(5x5, 16) \(\rightarrow\) MaxPool \(\rightarrow\) Conv(3x3, 32) \(\rightarrow\) MaxPool \(\rightarrow\) Dense(64) \(\rightarrow\) Dense(4) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dla CNN przeszukano batch size \(\{32,64\}\), learning rate \(\{0.001,0.0005\}\), dropout \(\{0.3,0.5\}\) oraz trzy topologie. Najlepszy wynik walidacyjny uzyskała topologia 2 dla batch size 32, learning rate 0.001 i dropout 0.3.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/notebook_cell_48_output_01.png}
+\caption{Krzywe straty i accuracy dla ostatecznego CNN z early stopping.}
+\end{figure}
+
+\subsection{Model 3: CNN z augmentacją danych}
+
+Trzeci wariant wykorzystał najlepszą architekturę CNN i dodał augmentację danych wykonywaną w locie. Zastosowano:
+\begin{itemize}
+  \item losowe odbicie lustrzane w poziomie z prawdopodobieństwem 50\%,
+  \item losową zmianę jasności w zakresie 80--120\%,
+  \item losowe przesunięcie obrazu maksymalnie o 4 piksele.
+\end{itemize}
+
+Wariant z augmentacją trenowano maksymalnie przez 50 epok z cierpliwością early stopping równą 7. Najlepszy wynik walidacyjny wystąpił w 23. epoce i wyniósł 66.57\%.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/notebook_cell_58_output_01.png}
+\caption{Krzywe straty i accuracy dla CNN z augmentacją.}
+\end{figure}
+
+\section{Wyniki}
+
+\begin{table}[H]
+\centering
+\caption{Porównanie głównych wyników.}
+\begin{tabular}{lrr}
+\toprule
+Model & Najlepsze accuracy walidacyjne & Accuracy testowe \\
+\midrule
+MLP, grid search & 39.45\% & 39.60\% \\
+CNN, grid search & 54.81\% & 55.52\% \\
+CNN + augmentacja & 66.57\% & 63.56\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Wyniki pokazują wyraźny wzrost jakości po przejściu z MLP na CNN. MLP traci informację o lokalnej strukturze pikseli po spłaszczeniu obrazu, co ogranicza jego skuteczność. CNN poprawia wynik testowy o około 16 punktów procentowych, a augmentacja dodaje kolejne około 8 punktów procentowych względem najlepszego CNN z grid search.
+
+\subsection{Macierze pomyłek}
+
+\begin{table}[H]
+\centering
+\caption{Macierz pomyłek MLP. Wiersze: predykcja, kolumny: prawdziwa klasa.}
+\begin{tabular}{lrrrr}
+\toprule
+ & bed & din & kitchen & living \\
+\midrule
+bed & 98 & 60 & 30 & 52 \\
+din & 48 & 96 & 51 & 42 \\
+kitchen & 6 & 11 & 24 & 19 \\
+living & 35 & 32 & 35 & 58 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Macierz pomyłek CNN. Wiersze: predykcja, kolumny: prawdziwa klasa.}
+\begin{tabular}{lrrrr}
+\toprule
+ & bed & din & kitchen & living \\
+\midrule
+bed & 96 & 9 & 22 & 29 \\
+din & 21 & 155 & 42 & 50 \\
+kitchen & 32 & 12 & 61 & 17 \\
+living & 38 & 23 & 15 & 75 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Macierz pomyłek CNN z augmentacją. Wiersze: predykcja, kolumny: prawdziwa klasa.}
+\begin{tabular}{lrrrr}
+\toprule
+ & bed & din & kitchen & living \\
+\midrule
+bed & 122 & 10 & 19 & 23 \\
+din & 12 & 135 & 27 & 27 \\
+kitchen & 26 & 19 & 84 & 19 \\
+living & 27 & 35 & 10 & 102 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Precision i recall}
+
+\begin{table}[H]
+\centering
+\caption{Metryki per klasa dla najlepszego wariantu CNN z augmentacją.}
+\begin{tabular}{lrr}
+\toprule
+Klasa & Precision & Recall \\
+\midrule
+bed & 70.11\% & 65.24\% \\
+din & 67.16\% & 67.84\% \\
+kitchen & 56.76\% & 60.00\% \\
+living & 58.62\% & 59.65\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Najłatwiejsze do rozpoznania były klasy \texttt{bed} i \texttt{din}. Najsłabsze wyniki dotyczą \texttt{kitchen} i \texttt{living}, co jest zgodne z intuicją: kuchnie, jadalnie i salony często współdzielą podobne elementy wizualne oraz układ przestrzenny.
+
+\section{Podsumowanie}
+
+Eksperyment potwierdził, że dla obrazów wnętrz istotne jest zachowanie informacji przestrzennej. MLP, mimo strojenia hiperparametrów, osiągnął tylko 39.60\% accuracy na zbiorze testowym. Zastosowanie warstw konwolucyjnych zwiększyło wynik do 55.52\%, a augmentacja danych poprawiła generalizację do 63.56\%.
+
+Najlepszym modelem w przeprowadzonym eksperymencie był CNN z augmentacją. Wynik nie jest idealny, ale jest uzasadniony trudnością danych: klasy są podobne, obrazy mają niską rozdzielczość wejściową, a model nie korzysta z transfer learningu. Dalsze ulepszenia powinny obejmować:
+\begin{itemize}
+  \item użycie transfer learningu, np. modelu wstępnie trenowanego na ImageNet,
+  \item stratified split, aby zachować proporcje klas w każdym podzbiorze,
+  \item zapis konfiguracji i wyników eksperymentów do plików,
+  \item poprawę augmentacji przesunięć tak, aby nie zawijać pikseli przez \texttt{circshift},
+  \item rozważenie pozostawienia klasy \texttt{bath} i użycia wag klas zamiast usuwania klasy.
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{kaggle_dataset}
+Mike Mazurov, \textit{House Rooms \& Streets Image Dataset}, Kaggle, 2022. \url{https://www.kaggle.com/datasets/mikhailma/house-rooms-streets-image-dataset}
+
+\bibitem{flux}
+Flux.jl documentation. \url{https://fluxml.ai/Flux.jl/stable/}
+
+\bibitem{goodfellow}
+Ian Goodfellow, Yoshua Bengio, Aaron Courville, \textit{Deep Learning}, MIT Press, 2016. \url{https://www.deeplearningbook.org/}
+\end{thebibliography}
+
+\end{document}
