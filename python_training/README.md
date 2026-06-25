@@ -129,7 +129,7 @@ bash cluster/submit_lecture_highres_grid_cnn_istarega.sh
 bash cluster/submit_lecture_highres_grid_aug_mbober.sh
 ```
 
-Ten grid używa wariantów `wide` i `deep` przy `224x224`, BatchNorm, `lr in {1e-3, 5e-4}` i `dropout in {0.30, 0.45}`. To nadal poprawiona architektura wykładowa bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment, ale bez mocnego zmniejszania obrazów do `64x64`.
+Ten grid używa wariantów `highres_wide` i `highres_deep` przy `224x224`, BatchNorm, `lr in {3e-4, 1e-4}` i `dropout in {0.30, 0.45}`. To nadal poprawiona architektura wykładowa bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment, ale ma dodatkowe etapy MaxPool, żeby zejść do map cech `7x7` przed klasyfikatorem MLP.
 
 ## Notebook ewaluacyjny
 

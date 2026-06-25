@@ -321,10 +321,34 @@ class LectureCNNClassifier(nn.Module):
             pool_count = 4
             hidden_units = 384
             second_hidden_units = 192
+        elif variant == "highres_wide":
+            self.features = nn.Sequential(
+                _lecture_stage(3, 32, conv_count=2, batch_norm=batch_norm, dropout2d=0.05),
+                _lecture_stage(32, 64, conv_count=2, batch_norm=batch_norm, dropout2d=0.10),
+                _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
+                _lecture_stage(128, 192, conv_count=1, batch_norm=batch_norm, dropout2d=0.20),
+                _lecture_stage(192, 256, conv_count=1, batch_norm=batch_norm, dropout2d=0.20),
+            )
+            feature_channels = 256
+            pool_count = 5
+            hidden_units = 256
+            second_hidden_units = 128
+        elif variant == "highres_deep":
+            self.features = nn.Sequential(
+                _lecture_stage(3, 32, conv_count=2, batch_norm=batch_norm, dropout2d=0.05),
+                _lecture_stage(32, 64, conv_count=2, batch_norm=batch_norm, dropout2d=0.10),
+                _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
+                _lecture_stage(128, 192, conv_count=2, batch_norm=batch_norm, dropout2d=0.20),
+                _lecture_stage(192, 256, conv_count=2, batch_norm=batch_norm, dropout2d=0.20),
+            )
+            feature_channels = 256
+            pool_count = 5
+            hidden_units = 384
+            second_hidden_units = 192
         else:
             raise ValueError(
                 "Unsupported lecture CNN configuration. Use variant='notebook' with topology 1/2/3, "
-                "or variant in {'wide', 'deep'}."
+                "or variant in {'wide', 'deep', 'highres_wide', 'highres_deep'}."
             )
 
         feature_dim = self._feature_dim(img_size, feature_channels=feature_channels, pool_count=pool_count)

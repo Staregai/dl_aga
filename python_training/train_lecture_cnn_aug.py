@@ -24,7 +24,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--img-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--topology", type=int, default=2, choices=[1, 2, 3])
-    parser.add_argument("--variant", default="notebook", choices=["notebook", "wide", "deep"])
+    parser.add_argument(
+        "--variant",
+        default="notebook",
+        choices=["notebook", "wide", "deep", "highres_wide", "highres_deep"],
+    )
     parser.add_argument("--dropout", type=float, default=0.30)
     parser.add_argument("--batch-norm", action="store_true")
     parser.add_argument("--class-weights", action="store_true")

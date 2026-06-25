@@ -15,11 +15,17 @@ submit() {
   sbatch --parsable --job-name="$job_name" --export="$export_arg" cluster/train_one.sbatch
 }
 
-for variant in wide deep; do
-  for lr_name in 1e3 5e4; do
+for variant in highres_wide highres_deep; do
+  case "$variant" in
+    highres_wide) variant_label="wide"; variant_short="w" ;;
+    highres_deep) variant_label="deep"; variant_short="d" ;;
+    *) echo "Unknown variant=$variant" >&2; exit 1 ;;
+  esac
+
+  for lr_name in 3e4 1e4; do
     case "$lr_name" in
-      1e3) lr="1e-3" ;;
-      5e4) lr="5e-4" ;;
+      3e4) lr="3e-4" ;;
+      1e4) lr="1e-4" ;;
       *) echo "Unknown lr_name=$lr_name" >&2; exit 1 ;;
     esac
 
@@ -30,12 +36,12 @@ for variant in wide deep; do
         *) echo "Unknown dropout_name=$dropout_name" >&2; exit 1 ;;
       esac
 
-      run_name="lecture_hr_cnn_${variant}_224_lr${lr_name}_${dropout_name}_bn1"
-      submit "lh-cnn-${variant:0:1}-${lr_name}-${dropout_name}" \
+      run_name="lecture_hr2_cnn_${variant_label}_224_lr${lr_name}_${dropout_name}_bn1"
+      submit "lh2-cnn-${variant_short}-${lr_name}-${dropout_name}" \
         RUN_NAME="$run_name" \
         TRAIN_SCRIPT=train_lecture_cnn.py \
         IMG_SIZE=224 \
-        BATCH_SIZE=32 \
+        BATCH_SIZE=24 \
         EPOCHS=500 \
         PATIENCE=55 \
         NUM_WORKERS=4 \
