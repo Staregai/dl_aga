@@ -15,6 +15,7 @@ Domyślnie usuwana jest klasa `bath`, żeby zachować porównywalność z notebo
 - `train_cnn_aug.py` - ta sama własna architektura `room_resnet_small/medium/large`, ale z augmentacją danych w treningu.
 - `train_lecture_cnn.py` - port trzech prostych topologii CNN z notebooka Julii/Flux, bez augmentacji.
 - `train_lecture_cnn_aug.py` - ta sama topologia co wyżej, ale z augmentacją z notebooka: flip poziomy, zmiana jasności i przesunięcie do 4 pikseli.
+- Oba skrypty `train_lecture_*` mają też warianty `--variant wide` i `--variant deep`: klasyczne, ulepszone CNN typu VGG z Conv-ReLU/BatchNorm, MaxPool, Dropout i klasyfikatorem MLP.
 
 Jeżeli chcesz porównać wpływ augmentacji, najważniejszy jest trzeci wariant. Domyślnie używa profilu `strong`:
 
@@ -111,6 +112,15 @@ bash cluster/submit_lecture_grid_aug_mbober.sh
 ```
 
 Te skrypty testują trzy topologie z notebooka, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.50}` oraz wariant z/bez BatchNorm. Zwykły `lecture_cnn` nie ma żadnej augmentacji, a `lecture_cnn_aug` różni się tylko transformacjami danych. Oba warianty używają `CrossEntropyLoss`, optymalizatora Adam i early stoppingu.
+
+Grid ulepszonych architektur wykładowych:
+
+```bash
+bash cluster/submit_lecture_improved_grid_cnn_istarega.sh
+bash cluster/submit_lecture_improved_grid_aug_mbober.sh
+```
+
+Ten grid testuje warianty `wide` i `deep`, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.45}` oraz BatchNorm. To nadal własne CNN trenowane od zera, bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment.
 
 ## Notebook ewaluacyjny
 

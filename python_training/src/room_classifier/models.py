@@ -225,8 +225,34 @@ def _conv_relu(
     return nn.Sequential(*layers)
 
 
+def _lecture_stage(
+    in_channels: int,
+    out_channels: int,
+    conv_count: int,
+    batch_norm: bool,
+    dropout2d: float,
+) -> nn.Sequential:
+    layers: list[nn.Module] = []
+    current_channels = in_channels
+    for _ in range(conv_count):
+        layers.append(
+            _conv_relu(
+                current_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                batch_norm=batch_norm,
+            )
+        )
+        current_channels = out_channels
+    layers.append(nn.MaxPool2d((2, 2)))
+    if dropout2d > 0:
+        layers.append(nn.Dropout2d(dropout2d))
+    return nn.Sequential(*layers)
+
+
 class LectureCNNClassifier(nn.Module):
-    """CNN topologies ported from the Julia/Flux notebook."""
+    """Lecture-scope CNNs: Julia/Flux port plus VGG-style improvements."""
 
     def __init__(
         self,
@@ -235,9 +261,10 @@ class LectureCNNClassifier(nn.Module):
         topology: int = 2,
         dropout: float = 0.30,
         batch_norm: bool = False,
+        variant: str = "notebook",
     ) -> None:
         super().__init__()
-        if topology == 1:
+        if variant == "notebook" and topology == 1:
             self.features = nn.Sequential(
                 _conv_relu(3, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
                 nn.MaxPool2d((2, 2)),
@@ -247,7 +274,8 @@ class LectureCNNClassifier(nn.Module):
                 nn.MaxPool2d((2, 2)),
             )
             hidden_units = 128
-        elif topology == 2:
+            second_hidden_units = None
+        elif variant == "notebook" and topology == 2:
             self.features = nn.Sequential(
                 _conv_relu(3, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
                 _conv_relu(16, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
@@ -257,7 +285,8 @@ class LectureCNNClassifier(nn.Module):
                 nn.MaxPool2d((2, 2)),
             )
             hidden_units = 256
-        elif topology == 3:
+            second_hidden_units = None
+        elif variant == "notebook" and topology == 3:
             self.features = nn.Sequential(
                 _conv_relu(3, 16, kernel_size=5, padding=2, batch_norm=batch_norm),
                 nn.MaxPool2d((2, 2)),
@@ -265,17 +294,48 @@ class LectureCNNClassifier(nn.Module):
                 nn.MaxPool2d((2, 2)),
             )
             hidden_units = 64
+            second_hidden_units = None
+        elif variant == "wide":
+            self.features = nn.Sequential(
+                _lecture_stage(3, 32, conv_count=2, batch_norm=batch_norm, dropout2d=0.05),
+                _lecture_stage(32, 64, conv_count=2, batch_norm=batch_norm, dropout2d=0.10),
+                _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
+            )
+            hidden_units = 256
+            second_hidden_units = 128
+        elif variant == "deep":
+            self.features = nn.Sequential(
+                _lecture_stage(3, 32, conv_count=2, batch_norm=batch_norm, dropout2d=0.05),
+                _lecture_stage(32, 64, conv_count=2, batch_norm=batch_norm, dropout2d=0.10),
+                _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
+                _lecture_stage(128, 256, conv_count=1, batch_norm=batch_norm, dropout2d=0.20),
+            )
+            hidden_units = 384
+            second_hidden_units = 192
         else:
-            raise ValueError("Lecture CNN topology must be one of: 1, 2, 3")
+            raise ValueError(
+                "Unsupported lecture CNN configuration. Use variant='notebook' with topology 1/2/3, "
+                "or variant in {'wide', 'deep'}."
+            )
 
         feature_dim = self._feature_dim(img_size)
-        self.classifier = nn.Sequential(
+        classifier_layers: list[nn.Module] = [
             nn.Flatten(),
             nn.Linear(feature_dim, hidden_units),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes),
-        )
+        ]
+        if second_hidden_units is not None:
+            classifier_layers.extend(
+                [
+                    nn.Linear(hidden_units, second_hidden_units),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(dropout * 0.5),
+                ]
+            )
+            hidden_units = second_hidden_units
+        classifier_layers.append(nn.Linear(hidden_units, num_classes))
+        self.classifier = nn.Sequential(*classifier_layers)
         self.apply(self._init_weights)
 
     def _feature_dim(self, img_size: int) -> int:
@@ -327,6 +387,7 @@ def build_lecture_cnn(
     topology: int = 2,
     dropout: float = 0.30,
     batch_norm: bool = False,
+    variant: str = "notebook",
 ) -> nn.Module:
     return LectureCNNClassifier(
         num_classes=num_classes,
@@ -334,6 +395,7 @@ def build_lecture_cnn(
         topology=topology,
         dropout=dropout,
         batch_norm=batch_norm,
+        variant=variant,
     )
 
 
@@ -364,5 +426,6 @@ def build_from_metadata(metadata: dict[str, Any], num_classes: int) -> nn.Module
             topology=int(metadata.get("topology", 2)),
             dropout=float(metadata["dropout"]),
             batch_norm=bool(metadata.get("batch_norm", False)),
+            variant=metadata.get("variant", "notebook"),
         )
     raise ValueError(f"Unsupported model_type in checkpoint: {model_type}")

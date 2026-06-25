@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--img-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--topology", type=int, default=2, choices=[1, 2, 3])
+    parser.add_argument("--variant", default="notebook", choices=["notebook", "wide", "deep"])
     parser.add_argument("--dropout", type=float, default=0.30)
     parser.add_argument("--batch-norm", action="store_true")
     parser.add_argument("--class-weights", action="store_true")
@@ -65,8 +66,10 @@ def main() -> None:
         topology=args.topology,
         dropout=args.dropout,
         batch_norm=args.batch_norm,
+        variant=args.variant,
     )
-    arch = f"lecture_topology_{args.topology}_bn{int(args.batch_norm)}"
+    topology_suffix = f"_t{args.topology}" if args.variant == "notebook" else ""
+    arch = f"lecture_{args.variant}{topology_suffix}_bn{int(args.batch_norm)}"
     print(f"model={arch} trainable_params={count_parameters(model):,}")
 
     criterion_weight = weights.to(device) if args.class_weights else None
@@ -76,6 +79,7 @@ def main() -> None:
     metadata = {
         "model_type": "lecture_cnn",
         "arch": arch,
+        "variant": args.variant,
         "topology": args.topology,
         "img_size": args.img_size,
         "dropout": args.dropout,
@@ -89,7 +93,7 @@ def main() -> None:
         "lr": args.lr,
         "class_weights": args.class_weights,
         "uses_augmentation": False,
-        "source": "Julia notebook CNN topology port",
+        "source": "Julia notebook CNN topology port" if args.variant == "notebook" else "Improved lecture-scope CNN",
     }
     train_model(
         model=model,
