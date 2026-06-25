@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import torch
 import torch.nn as nn
 
 
@@ -202,6 +203,104 @@ class RoomResNetSmall(RoomResNet):
         super().__init__(num_classes=num_classes, arch="small", dropout=dropout)
 
 
+def _conv_relu(
+    in_channels: int,
+    out_channels: int,
+    kernel_size: int,
+    padding: int,
+    batch_norm: bool,
+) -> nn.Sequential:
+    layers: list[nn.Module] = [
+        nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            padding=padding,
+            bias=not batch_norm,
+        )
+    ]
+    if batch_norm:
+        layers.append(nn.BatchNorm2d(out_channels))
+    layers.append(nn.ReLU(inplace=True))
+    return nn.Sequential(*layers)
+
+
+class LectureCNNClassifier(nn.Module):
+    """CNN topologies ported from the Julia/Flux notebook."""
+
+    def __init__(
+        self,
+        num_classes: int,
+        img_size: int,
+        topology: int = 2,
+        dropout: float = 0.30,
+        batch_norm: bool = False,
+    ) -> None:
+        super().__init__()
+        if topology == 1:
+            self.features = nn.Sequential(
+                _conv_relu(3, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+                _conv_relu(16, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+                _conv_relu(32, 64, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+            )
+            hidden_units = 128
+        elif topology == 2:
+            self.features = nn.Sequential(
+                _conv_relu(3, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
+                _conv_relu(16, 16, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+                _conv_relu(16, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
+                _conv_relu(32, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+            )
+            hidden_units = 256
+        elif topology == 3:
+            self.features = nn.Sequential(
+                _conv_relu(3, 16, kernel_size=5, padding=2, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+                _conv_relu(16, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
+                nn.MaxPool2d((2, 2)),
+            )
+            hidden_units = 64
+        else:
+            raise ValueError("Lecture CNN topology must be one of: 1, 2, 3")
+
+        feature_dim = self._feature_dim(img_size)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(feature_dim, hidden_units),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_units, num_classes),
+        )
+        self.apply(self._init_weights)
+
+    def _feature_dim(self, img_size: int) -> int:
+        with torch.no_grad():
+            dummy = torch.zeros(1, 3, img_size, img_size)
+            features = self.features(dummy)
+        return int(features.numel())
+
+    @staticmethod
+    def _init_weights(module: nn.Module) -> None:
+        if isinstance(module, nn.Conv2d):
+            nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
+            nn.init.ones_(module.weight)
+            nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Linear):
+            nn.init.kaiming_uniform_(module.weight, nonlinearity="relu")
+            nn.init.zeros_(module.bias)
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
+
 def build_mlp(num_classes: int, img_size: int, dropout: float = 0.45) -> nn.Module:
     return MLPClassifier(num_classes=num_classes, img_size=img_size, dropout=dropout)
 
@@ -220,6 +319,22 @@ def normalize_cnn_arch(arch: str | None) -> str:
 
 def build_custom_cnn(num_classes: int, dropout: float = 0.30, arch: str = "small") -> nn.Module:
     return RoomResNet(num_classes=num_classes, arch=normalize_cnn_arch(arch), dropout=dropout)
+
+
+def build_lecture_cnn(
+    num_classes: int,
+    img_size: int,
+    topology: int = 2,
+    dropout: float = 0.30,
+    batch_norm: bool = False,
+) -> nn.Module:
+    return LectureCNNClassifier(
+        num_classes=num_classes,
+        img_size=img_size,
+        topology=topology,
+        dropout=dropout,
+        batch_norm=batch_norm,
+    )
 
 
 def count_parameters(model: nn.Module) -> int:
@@ -241,5 +356,13 @@ def build_from_metadata(metadata: dict[str, Any], num_classes: int) -> nn.Module
             num_classes=num_classes,
             dropout=float(metadata["dropout"]),
             arch=metadata.get("arch", "small"),
+        )
+    if model_type in {"lecture_cnn", "lecture_cnn_aug"}:
+        return build_lecture_cnn(
+            num_classes=num_classes,
+            img_size=int(metadata["img_size"]),
+            topology=int(metadata.get("topology", 2)),
+            dropout=float(metadata["dropout"]),
+            batch_norm=bool(metadata.get("batch_norm", False)),
         )
     raise ValueError(f"Unsupported model_type in checkpoint: {model_type}")

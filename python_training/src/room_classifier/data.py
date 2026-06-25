@@ -19,6 +19,33 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
+class RandomBrightnessMultiplier:
+    def __init__(self, p: float = 0.5, min_factor: float = 0.8, step: float = 0.05, steps: int = 9) -> None:
+        self.p = p
+        self.min_factor = min_factor
+        self.step = step
+        self.steps = steps
+
+    def __call__(self, image: torch.Tensor) -> torch.Tensor:
+        if torch.rand(1).item() > self.p:
+            return image
+        factor = self.min_factor + self.step * int(torch.randint(self.steps, (1,)).item())
+        return torch.clamp(image * factor, 0.0, 1.0)
+
+
+class RandomCircularShift:
+    def __init__(self, max_shift: int = 4, p: float = 0.5) -> None:
+        self.max_shift = max_shift
+        self.p = p
+
+    def __call__(self, image: torch.Tensor) -> torch.Tensor:
+        if torch.rand(1).item() > self.p:
+            return image
+        shift_y = int(torch.randint(-self.max_shift, self.max_shift + 1, (1,)).item())
+        shift_x = int(torch.randint(-self.max_shift, self.max_shift + 1, (1,)).item())
+        return torch.roll(image, shifts=(shift_y, shift_x), dims=(1, 2))
+
+
 @dataclass(frozen=True)
 class DatasetInfo:
     class_names: list[str]
@@ -159,6 +186,18 @@ def build_transforms(
     augment_strength: str = "strong",
 ) -> transforms.Compose:
     if train and augment:
+        if augment_strength == "julia":
+            return transforms.Compose(
+                [
+                    transforms.Resize((img_size, img_size)),
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.ToTensor(),
+                    RandomBrightnessMultiplier(p=0.5),
+                    RandomCircularShift(max_shift=4, p=0.5),
+                    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+                ]
+            )
+
         if augment_strength == "basic":
             return transforms.Compose(
                 [

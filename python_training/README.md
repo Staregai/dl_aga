@@ -13,6 +13,8 @@ Domyślnie usuwana jest klasa `bath`, żeby zachować porównywalność z notebo
 - `train_mlp.py` - mocniejszy baseline MLP na pikselach, `128x128`.
 - `train_cnn.py` - własny `room_resnet_small/medium/large` trenowany od zera: bloki rezydualne, BatchNorm, Squeeze-and-Excitation, global average pooling. Ten wariant nie używa żadnych augmentacji danych.
 - `train_cnn_aug.py` - ta sama własna architektura `room_resnet_small/medium/large`, ale z augmentacją danych w treningu.
+- `train_lecture_cnn.py` - port trzech prostych topologii CNN z notebooka Julii/Flux, bez augmentacji.
+- `train_lecture_cnn_aug.py` - ta sama topologia co wyżej, ale z augmentacją z notebooka: flip poziomy, zmiana jasności i przesunięcie do 4 pikseli.
 
 Jeżeli chcesz porównać wpływ augmentacji, najważniejszy jest trzeci wariant. Domyślnie używa profilu `strong`:
 
@@ -100,6 +102,15 @@ bash cluster/submit_hparam_grid_aug_mbober.sh
 ```
 
 `submit_hparam_grid_cnn_istarega.sh` odpala 16 konfiguracji zwykłego CNN bez jakichkolwiek augmentacji: `arch x lr x weight_decay x dropout`. `submit_hparam_grid_aug_mbober.sh` odpala 16 konfiguracji CNN+aug: `lr x weight_decay x dropout x mix_prob`, z architekturą `large`, `256x256`, EMA, cosine warmup, MixUp/CutMix i TTA w ewaluacji.
+
+Grid modeli przeniesionych z notebooka Julii:
+
+```bash
+bash cluster/submit_lecture_grid_cnn_istarega.sh
+bash cluster/submit_lecture_grid_aug_mbober.sh
+```
+
+Te skrypty testują trzy topologie z notebooka, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.50}` oraz wariant z/bez BatchNorm. Zwykły `lecture_cnn` nie ma żadnej augmentacji, a `lecture_cnn_aug` różni się tylko transformacjami danych. Oba warianty używają `CrossEntropyLoss`, optymalizatora Adam i early stoppingu.
 
 ## Notebook ewaluacyjny
 
