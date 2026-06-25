@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import torch
 import torch.nn as nn
 
 
@@ -273,6 +272,8 @@ class LectureCNNClassifier(nn.Module):
                 _conv_relu(32, 64, kernel_size=3, padding=1, batch_norm=batch_norm),
                 nn.MaxPool2d((2, 2)),
             )
+            feature_channels = 64
+            pool_count = 3
             hidden_units = 128
             second_hidden_units = None
         elif variant == "notebook" and topology == 2:
@@ -284,6 +285,8 @@ class LectureCNNClassifier(nn.Module):
                 _conv_relu(32, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
                 nn.MaxPool2d((2, 2)),
             )
+            feature_channels = 32
+            pool_count = 2
             hidden_units = 256
             second_hidden_units = None
         elif variant == "notebook" and topology == 3:
@@ -293,6 +296,8 @@ class LectureCNNClassifier(nn.Module):
                 _conv_relu(16, 32, kernel_size=3, padding=1, batch_norm=batch_norm),
                 nn.MaxPool2d((2, 2)),
             )
+            feature_channels = 32
+            pool_count = 2
             hidden_units = 64
             second_hidden_units = None
         elif variant == "wide":
@@ -301,6 +306,8 @@ class LectureCNNClassifier(nn.Module):
                 _lecture_stage(32, 64, conv_count=2, batch_norm=batch_norm, dropout2d=0.10),
                 _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
             )
+            feature_channels = 128
+            pool_count = 3
             hidden_units = 256
             second_hidden_units = 128
         elif variant == "deep":
@@ -310,6 +317,8 @@ class LectureCNNClassifier(nn.Module):
                 _lecture_stage(64, 128, conv_count=2, batch_norm=batch_norm, dropout2d=0.15),
                 _lecture_stage(128, 256, conv_count=1, batch_norm=batch_norm, dropout2d=0.20),
             )
+            feature_channels = 256
+            pool_count = 4
             hidden_units = 384
             second_hidden_units = 192
         else:
@@ -318,7 +327,7 @@ class LectureCNNClassifier(nn.Module):
                 "or variant in {'wide', 'deep'}."
             )
 
-        feature_dim = self._feature_dim(img_size)
+        feature_dim = self._feature_dim(img_size, feature_channels=feature_channels, pool_count=pool_count)
         classifier_layers: list[nn.Module] = [
             nn.Flatten(),
             nn.Linear(feature_dim, hidden_units),
@@ -338,11 +347,14 @@ class LectureCNNClassifier(nn.Module):
         self.classifier = nn.Sequential(*classifier_layers)
         self.apply(self._init_weights)
 
-    def _feature_dim(self, img_size: int) -> int:
-        with torch.no_grad():
-            dummy = torch.zeros(1, 3, img_size, img_size)
-            features = self.features(dummy)
-        return int(features.numel())
+    @staticmethod
+    def _feature_dim(img_size: int, feature_channels: int, pool_count: int) -> int:
+        spatial_size = img_size
+        for _ in range(pool_count):
+            spatial_size //= 2
+        if spatial_size <= 0:
+            raise ValueError(f"img_size={img_size} is too small for {pool_count} pooling stages")
+        return feature_channels * spatial_size * spatial_size
 
     @staticmethod
     def _init_weights(module: nn.Module) -> None:
