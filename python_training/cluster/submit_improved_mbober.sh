@@ -81,7 +81,7 @@ JID_AUG_L288=$(
 
 submit_ensemble room-imp-ens-aug "${JID_AUG_L256}:${JID_AUG_L288}" \
   RUN_NAME=imp_ensemble_aug_large_256_288_tta5 \
-  CHECKPOINTS="outputs/checkpoints/imp_aug_large_256_cos_ema_mix/cnn_aug_best.pt,outputs/checkpoints/imp_aug_large_288_cos_ema_mix/cnn_aug_best.pt" \
+  CHECKPOINTS="outputs/checkpoints/imp_aug_large_256_cos_ema_mix/cnn_aug_best.pt:outputs/checkpoints/imp_aug_large_288_cos_ema_mix/cnn_aug_best.pt" \
   BATCH_SIZE=16 \
   NUM_WORKERS=4 \
   TTA_PASSES=5 \

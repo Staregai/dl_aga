@@ -18,7 +18,7 @@ source .venv/bin/activate
 mkdir -p cluster/logs outputs/reports splits
 
 : "${RUN_NAME:?RUN_NAME is required}"
-: "${CHECKPOINTS:?CHECKPOINTS is required as comma-separated paths}"
+: "${CHECKPOINTS:?CHECKPOINTS is required as colon-separated paths}"
 
 DATA_DIR="${DATA_DIR:-$PROJECT_DIR/../data/raw/kaggle_room_street_data/house_data}"
 SPLIT_CSV="${SPLIT_CSV:-$PROJECT_DIR/splits/room_split_seed42_${RUN_NAME}.csv}"
@@ -42,7 +42,7 @@ echo "report_dir=$REPORT_DIR"
 echo "batch_size=$BATCH_SIZE num_workers=$NUM_WORKERS tta_passes=$TTA_PASSES"
 nvidia-smi || true
 
-IFS=',' read -r -a checkpoint_array <<< "$CHECKPOINTS"
+IFS=':' read -r -a checkpoint_array <<< "$CHECKPOINTS"
 checkpoint_args=()
 for checkpoint in "${checkpoint_array[@]}"; do
   checkpoint_args+=(--checkpoint "$checkpoint")
