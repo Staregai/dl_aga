@@ -122,6 +122,15 @@ bash cluster/submit_lecture_improved_grid_aug_mbober.sh
 
 Ten grid testuje warianty `wide` i `deep`, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.45}` oraz BatchNorm. To nadal własne CNN trenowane od zera, bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment.
 
+Grid poprawionych architektur wykładowych w wyższej rozdzielczości:
+
+```bash
+bash cluster/submit_lecture_highres_grid_cnn_istarega.sh
+bash cluster/submit_lecture_highres_grid_aug_mbober.sh
+```
+
+Ten grid używa wariantów `wide` i `deep` przy `224x224`, BatchNorm, `lr in {1e-3, 5e-4}` i `dropout in {0.30, 0.45}`. To nadal poprawiona architektura wykładowa bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment, ale bez mocnego zmniejszania obrazów do `64x64`.
+
 ## Notebook ewaluacyjny
 
 Otwórz:
