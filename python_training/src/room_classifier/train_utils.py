@@ -97,6 +97,20 @@ def write_json(path: str | Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
+def make_summary_writer(tensorboard_dir: str | Path | None):
+    if tensorboard_dir is None:
+        return None
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+    except Exception as exc:  # pragma: no cover - depends on optional tensorboard install
+        print(f"TensorBoard logging disabled: {exc}")
+        return None
+
+    tensorboard_dir = Path(tensorboard_dir)
+    tensorboard_dir.mkdir(parents=True, exist_ok=True)
+    return SummaryWriter(log_dir=str(tensorboard_dir))
+
+
 def current_lr(optimizer: torch.optim.Optimizer) -> float:
     return float(optimizer.param_groups[0]["lr"])
 
@@ -287,6 +301,7 @@ def train_model(
     grad_clip: float | None = 1.0,
     mix_config: MixConfig | None = None,
     ema_decay: float = 0.0,
+    tensorboard_dir: str | Path | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, float]]]:
     checkpoint_path = Path(checkpoint_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -297,6 +312,9 @@ def train_model(
     best_score = -float("inf")
     best_record: dict[str, Any] | None = None
     bad_epochs = 0
+    writer = make_summary_writer(tensorboard_dir)
+    if writer is not None:
+        writer.add_text("metadata", json.dumps(metadata, indent=2, ensure_ascii=False), 0)
 
     for epoch in range(1, epochs + 1):
         train_metrics = run_epoch(
@@ -323,6 +341,15 @@ def train_model(
             "val_macro_f1": val_metrics["macro_f1"],
         }
         history.append(record)
+
+        if writer is not None:
+            writer.add_scalar("loss/train", record["train_loss"], epoch)
+            writer.add_scalar("loss/val", record["val_loss"], epoch)
+            writer.add_scalar("accuracy/train", record["train_accuracy"], epoch)
+            writer.add_scalar("accuracy/val", record["val_accuracy"], epoch)
+            writer.add_scalar("macro_f1/train", record["train_macro_f1"], epoch)
+            writer.add_scalar("macro_f1/val", record["val_macro_f1"], epoch)
+            writer.add_scalar("lr", record["lr"], epoch)
 
         if scheduler is not None:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -361,6 +388,9 @@ def train_model(
         if bad_epochs >= patience:
             print(f"Early stopping at epoch {epoch}.")
             break
+
+    if writer is not None:
+        writer.close()
 
     pd.DataFrame(history).to_csv(checkpoint_path.with_suffix(".history.csv"), index=False)
     summary = {

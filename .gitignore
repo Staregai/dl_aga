@@ -16,8 +16,10 @@ data/raw/
 python_training/.venv/
 python_training/.tmp/
 python_training/.pip-cache/
-python_training/cluster/logs/
 python_training/outputs/
 python_training/splits/*.csv
 !python_training/splits/.gitkeep
 python_training/splits/smoke_*.csv
+tmp/
+
+exports/

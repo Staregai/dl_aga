@@ -1,152 +1,115 @@
-# Python/PyTorch training
+# Python/PyTorch Training
 
-Ten folder jest czystą wersją projektu w Pythonie. Dane są czytane z:
+Ten katalog zawiera uporządkowaną wersję treningu i ewaluacji modeli w PyTorch.
+
+## Struktura
 
 ```text
-../data/raw/kaggle_room_street_data/house_data
+python_training/
+├── notebooks/
+│   └── evaluate_trained_models.ipynb
+├── scripts/
+│   ├── train/
+│   │   ├── train_mlp.py
+│   │   ├── train_cnn.py
+│   │   ├── train_cnn_aug.py
+│   │   ├── train_simple_cnn.py
+│   │   └── train_simple_cnn_aug.py
+│   ├── evaluate/
+│   │   ├── evaluate_checkpoints.py
+│   │   └── evaluate_ensemble.py
+│   └── workflows/
+│       └── train_all.sh
+├── src/room_classifier/
+├── splits/
+└── requirements.txt
 ```
 
-Domyślnie usuwana jest klasa `bath`, żeby zachować porównywalność z notebookiem Julii.
-
-## Modele
-
-- `train_mlp.py` - mocniejszy baseline MLP na pikselach, `128x128`.
-- `train_cnn.py` - własny `room_resnet_small/medium/large` trenowany od zera: bloki rezydualne, BatchNorm, Squeeze-and-Excitation, global average pooling. Ten wariant nie używa żadnych augmentacji danych.
-- `train_cnn_aug.py` - ta sama własna architektura `room_resnet_small/medium/large`, ale z augmentacją danych w treningu.
-- `train_lecture_cnn.py` - port trzech prostych topologii CNN z notebooka Julii/Flux, bez augmentacji.
-- `train_lecture_cnn_aug.py` - ta sama topologia co wyżej, ale z augmentacją z notebooka: flip poziomy, zmiana jasności i przesunięcie do 4 pikseli.
-- Oba skrypty `train_lecture_*` mają też warianty `--variant wide` i `--variant deep`: klasyczne, ulepszone CNN typu VGG z Conv-ReLU/BatchNorm, MaxPool, Dropout i klasyfikatorem MLP.
-
-Jeżeli chcesz porównać wpływ augmentacji, najważniejszy jest trzeci wariant. Domyślnie używa profilu `strong`:
-
-```bash
-python train_cnn_aug.py
-```
-
-Domyślnie `CNN` i `CNN+aug` mają wysoki limit `--epochs 500`. Trening kończy early stopping: `patience=45` dla CNN i `patience=60` dla CNN+aug. To jest celowo łagodne, bo modele są trenowane od zera.
-
-Nowsze treningi CNN używają też EMA wag i schedulera cosine z warmupem. To nie zmienia danych wejściowych, więc zwykły CNN pozostaje wariantem bez augmentacji. Dodatkowe techniki mieszania obrazów (`MixUp`/`CutMix`) są dostępne tylko w `train_cnn_aug.py`.
-
-Słabszy profil, bliższy klasycznym augmentacjom:
-
-```bash
-python train_cnn_aug.py --augment-strength basic
-```
-
-Mocniejszy profil `strong` zawiera RandAugment, mocniejszy crop, mocniejsze kolory, lekki blur/sharpness, affine/perspective i mocniejsze random erasing.
-
-Transfer learning zwykle dałby wyższy wynik, ale nie jest tu używany, bo wtedy `CNN` i `CNN+aug` różniłyby się nie tylko datasetem/augmentacją, lecz także źródłem wag i charakterem eksperymentu.
+Skrypty można odpalać z katalogu `python_training/`; same wykrywają root projektu treningowego i ustawiają importy z `src/`.
 
 ## Setup
 
 ```bash
+cd python_training
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
+Dane są domyślnie czytane z:
+
+```text
+../data/raw/kaggle_room_street_data/house_data
+```
+
+Domyślnie usuwana jest klasa `bath`, żeby zachować porównywalność z finalnym eksperymentem.
+
+## Modele
+
+- `scripts/train/train_mlp.py` - baseline MLP na spłaszczonych pikselach.
+- `scripts/train/train_cnn.py` - własny `RoomResNet` trenowany od zera, bez augmentacji danych.
+- `scripts/train/train_cnn_aug.py` - ta sama rodzina `RoomResNet`, ale z augmentacją, EMA, schedulerem cosine oraz opcjonalnym MixUp/CutMix.
+- `scripts/train/train_simple_cnn.py` - proste CNN inspirowane pierwotnym notebookiem, bez augmentacji.
+- `scripts/train/train_simple_cnn_aug.py` - ten sam typ prostego CNN, ale z lekką augmentacją danych.
+
+Wszystkie skrypty treningowe przyjmują `--seed`. Historia treningu zapisuje się obok checkpointu jako `*.history.csv`; TensorBoard można włączyć przez `--tensorboard-dir`.
+
 ## Trening
 
 ```bash
-source .venv/bin/activate
-python train_mlp.py
-python train_cnn.py
-python train_cnn_aug.py
-python evaluate_checkpoints.py --split test
+python scripts/train/train_mlp.py
+python scripts/train/train_cnn.py
+python scripts/train/train_cnn_aug.py
 ```
 
-Albo całość:
+Przykład szybkiego smoke testu:
 
 ```bash
-bash train_all.sh
+python scripts/train/train_mlp.py --epochs 1 --max-samples 160 --batch-size 16 --output-dir outputs/smoke
+python scripts/train/train_cnn.py --epochs 1 --max-samples 160 --batch-size 16 --img-size 96 --output-dir outputs/smoke
+python scripts/train/train_cnn_aug.py --epochs 1 --max-samples 160 --batch-size 16 --img-size 96 --output-dir outputs/smoke
 ```
 
-Checkpointy trafiają do `outputs/checkpoints/`, raporty i macierze pomyłek do `outputs/reports/`.
-
-## Klaster SLURM
-
-Skrypty do klastra są w `cluster/`. Zakładają konto SLURM `stud-2526-l-03`, partycję `student` i GPU `rtx6000`.
+Zbiorcze uruchomienie podstawowego treningu i ewaluacji:
 
 ```bash
-cd ~/dl_aga/python_training
-bash cluster/setup_env.sh
-bash cluster/submit_mbober.sh
-bash cluster/submit_istarega.sh
+bash scripts/workflows/train_all.sh
 ```
 
-`submit_mbober.sh` odpala CNN i CNN+aug na `224x224`; `submit_istarega.sh` odpala MLP na `128x128`.
-
-Do mocniejszego przeszukania hiperparametrów:
+## Ewaluacja
 
 ```bash
-bash cluster/submit_grid_mbober.sh
-bash cluster/submit_grid_istarega.sh
+python scripts/evaluate/evaluate_checkpoints.py --split test
 ```
 
-Grid testuje `room_resnet_medium` i `room_resnet_large` trenowane od zera oraz kilka ustawień LR, weight decay, dropout, label smoothing i profilu augmentacji.
-
-Najmocniejsza seria eksperymentów:
+Ensemble:
 
 ```bash
-bash cluster/submit_improved_mbober.sh
-bash cluster/submit_improved_istarega.sh
+python scripts/evaluate/evaluate_ensemble.py \
+  --checkpoint outputs/checkpoints/model_a/cnn_aug_best.pt \
+  --checkpoint outputs/checkpoints/model_b/cnn_aug_best.pt \
+  --checkpoint outputs/checkpoints/model_c/cnn_aug_best.pt \
+  --tta-passes 5 \
+  --name ensemble_top3
 ```
 
-Ta seria uruchamia zwykłe CNN bez augmentacji oraz CNN+aug z EMA, cosine warmup, mocniejszą rozdzielczością, MixUp/CutMix i TTA w ewaluacji. Dodatkowo `submit_improved_mbober.sh` odpala osobny job ensemble dla najlepszych modeli CNN+aug.
-
-Właściwy grid search po hiperparametrach:
-
-```bash
-bash cluster/submit_hparam_grid_cnn_istarega.sh
-bash cluster/submit_hparam_grid_aug_mbober.sh
-```
-
-`submit_hparam_grid_cnn_istarega.sh` odpala 16 konfiguracji zwykłego CNN bez jakichkolwiek augmentacji: `arch x lr x weight_decay x dropout`. `submit_hparam_grid_aug_mbober.sh` odpala 16 konfiguracji CNN+aug: `lr x weight_decay x dropout x mix_prob`, z architekturą `large`, `256x256`, EMA, cosine warmup, MixUp/CutMix i TTA w ewaluacji.
-
-Grid modeli przeniesionych z notebooka Julii:
-
-```bash
-bash cluster/submit_lecture_grid_cnn_istarega.sh
-bash cluster/submit_lecture_grid_aug_mbober.sh
-```
-
-Te skrypty testują trzy topologie z notebooka, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.50}` oraz wariant z/bez BatchNorm. Zwykły `lecture_cnn` nie ma żadnej augmentacji, a `lecture_cnn_aug` różni się tylko transformacjami danych. Oba warianty używają `CrossEntropyLoss`, optymalizatora Adam i early stoppingu.
-
-Grid ulepszonych architektur wykładowych:
-
-```bash
-bash cluster/submit_lecture_improved_grid_cnn_istarega.sh
-bash cluster/submit_lecture_improved_grid_aug_mbober.sh
-```
-
-Ten grid testuje warianty `wide` i `deep`, `lr in {1e-3, 5e-4}`, `dropout in {0.30, 0.45}` oraz BatchNorm. To nadal własne CNN trenowane od zera, bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment.
-
-Grid poprawionych architektur wykładowych w wyższej rozdzielczości:
-
-```bash
-bash cluster/submit_lecture_highres_grid_cnn_istarega.sh
-bash cluster/submit_lecture_highres_grid_aug_mbober.sh
-```
-
-Ten grid używa wariantów `highres_wide` i `highres_deep` przy `224x224`, BatchNorm, `lr in {3e-4, 1e-4}` i `dropout in {0.30, 0.45}`. To nadal poprawiona architektura wykładowa bez transfer learningu, ResNetów, SE, MixUp/CutMix i RandAugment, ale ma dodatkowe etapy MaxPool, żeby zejść do map cech `7x7` przed klasyfikatorem MLP.
-
-## Notebook ewaluacyjny
-
-Otwórz:
+Notebook:
 
 ```text
 notebooks/evaluate_trained_models.ipynb
 ```
 
-Notebook nie trenuje modeli. Ładuje checkpointy, liczy metryki i rysuje macierze pomyłek.
+Notebook ładuje checkpointy i zapisane metryki, agreguje wyniki po seedach oraz generuje finalne wykresy do katalogu `../figures/`.
 
-## Szybki test kodu
+## Outputy
 
-Do testu bez pełnego treningu:
+Domyślne lokalizacje:
 
-```bash
-python train_mlp.py --epochs 1 --max-samples 160 --batch-size 16 --output-dir outputs/smoke
-python train_cnn.py --epochs 1 --max-samples 160 --batch-size 16 --img-size 96 --output-dir outputs/smoke
-python train_cnn_aug.py --epochs 1 --max-samples 160 --batch-size 16 --img-size 96 --output-dir outputs/smoke
+```text
+outputs/checkpoints/   # checkpointy, historie treningu
+outputs/reports/       # metryki, macierze pomyłek, CSV
+outputs/tensorboard/   # logi TensorBoard, jeśli włączone
 ```
+
+`outputs/` jest ignorowany przez git. Do raportu potrzebne są tylko finalne grafiki w katalogu rootowym `figures/`.

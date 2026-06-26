@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from room_classifier.data import default_data_dir, load_or_create_split, make_loaders, split_summary
@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-dir", type=Path, default=default_data_dir())
     parser.add_argument("--split-csv", type=Path, default=ROOT / "splits" / "room_split_seed42.csv")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "outputs" / "checkpoints")
+    parser.add_argument("--tensorboard-dir", type=Path, default=None)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--img-size", type=int, default=128)
@@ -84,6 +85,7 @@ def main() -> None:
         patience=args.patience,
         checkpoint_path=args.output_dir / "mlp_best.pt",
         metadata=metadata,
+        tensorboard_dir=args.tensorboard_dir,
     )
 
 

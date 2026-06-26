@@ -1,6 +1,13 @@
 \documentclass[12pt,a4paper]{article}
 
-\usepackage{fontspec}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
 \usepackage[polish]{babel}
 \usepackage{amsmath}
 \usepackage{array}
@@ -10,22 +17,21 @@
 \usepackage{geometry}
 \usepackage{graphicx}
 \usepackage{hyperref}
+\usepackage{indentfirst}
 \usepackage{longtable}
 \usepackage{xcolor}
 
 \geometry{margin=2.5cm}
-\defaultfontfeatures{Ligatures=TeX}
-\setmainfont{Arial}
 \hypersetup{
   colorlinks=true,
   linkcolor=black,
   urlcolor=blue,
   citecolor=black
 }
-\setlength{\parskip}{0.55em}
-\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1.5em}
 \renewcommand{\arraystretch}{1.18}
-\sloppy
+\emergencystretch=2em
 
 \title{Raport projektowy: klasyfikacja obrazów pomieszczeń z wykorzystaniem sieci neuronowych}
 \author{Michał Dyło, Agnieszka Wardak}
@@ -33,27 +39,28 @@
 
 \begin{document}
 \maketitle
+\newpage
+\tableofcontents
+\newpage
 
-\section{Wstęp i opis zagadnienia}
+\section{Wstęp i cel projektu}
 
-Celem projektu było zbudowanie i porównanie modeli głębokiego uczenia do klasyfikacji obrazów pomieszczeń. Rozważany problem należy do klasyfikacji wieloklasowej obrazów RGB: dla danego zdjęcia model ma wskazać typ pomieszczenia. W finalnej wersji eksperymentu rozpoznawano cztery klasy: \texttt{bed}, \texttt{din}, \texttt{kitchen} oraz \texttt{living}.
+Celem projektu było rozwiązanie zadania klasyfikacji obrazów pomieszczeń. Dla pojedynczego zdjęcia RGB model miał przewidzieć jedną z czterech klas: \texttt{bed}, \texttt{din}, \texttt{kitchen} albo \texttt{living}. Jest to klasyfikacja wieloklasowa, ale trudniejsza niż rozpoznawanie pojedynczych obiektów, ponieważ klasy są opisywane przez całą scenę. Salon, jadalnia i kuchnia często współwystępują w jednej przestrzeni, a zdjęcia różnią się perspektywą, oświetleniem, stylem wnętrza i liczbą widocznych mebli.
 
-Zadanie jest trudniejsze niż klasyfikacja prostych obiektów, ponieważ klasy nie są definiowane przez pojedynczy charakterystyczny element. Sypialnia, salon i jadalnia mogą zawierać podobne meble, a granica między kuchnią i jadalnią bywa nieostra. Dodatkowo zdjęcia różnią się oświetleniem, perspektywą, stylem wnętrza, liczbą widocznych obiektów i stopniem uporządkowania sceny. Oznacza to, że model musi uczyć się zarówno lokalnych cech obrazu, jak i szerszego kontekstu przestrzennego.
-
-Porównano trzy grupy modeli:
+Raport ma strukturę eksperymentalną. Zamiast opisywać tylko finalny model, kolejne rozdziały pokazują, jak zmieniała się jakość po dodaniu następnych elementów:
 \begin{itemize}
-  \item MLP jako prosty model bazowy pracujący na spłaszczonych pikselach,
-  \item własną sieć konwolucyjną typu ResNet trenowaną od zera bez augmentacji,
-  \item tę samą rodzinę sieci konwolucyjnych trenowaną z augmentacją danych oraz wariant ensemble.
+  \item MLP jako najprostszy punkt odniesienia,
+  \item proste CNN bez augmentacji,
+  \item proste CNN z augmentacją,
+  \item własny model typu ResNet bez augmentacji,
+  \item ten sam typ modelu ResNet z silną augmentacją i ensemble.
 \end{itemize}
 
-Ważnym założeniem było to, że modele CNN nie korzystają z transfer learningu ani gotowych wag. Sieci były trenowane od zera, dzięki czemu porównanie między zwykłym CNN a CNN z augmentacją dotyczy faktycznie wpływu procedury uczenia i przetwarzania danych, a nie użycia wcześniej wytrenowanego modelu.
+Dodatkowo sprawdzono wpływ hiperparametrów, rozdzielczości wejścia oraz downscale'u. Wszystkie sieci były trenowane od zera. Nie użyto transfer learningu ani gotowych wag, więc porównanie dotyczy architektury, danych wejściowych i procedury uczenia, a nie wiedzy przeniesionej z dużego zewnętrznego zbioru.
 
-\section{Opis i eksploracyjna analiza danych}
+\section{Dane i konfiguracja zadania}
 
-Wykorzystano zbiór \textit{House Rooms \& Streets Image Dataset} z Kaggle \cite{kaggle_dataset}. Dataset zawiera katalogi \texttt{house\_data} oraz \texttt{street\_data}; w projekcie użyto wyłącznie katalogu \texttt{house\_data}, ponieważ dotyczył zdjęć wnętrz.
-
-W katalogu \texttt{house\_data} znajdowało się 5249 obrazów w pięciu klasach. Etykieta była zapisana w nazwie pliku jako prefiks, np. \texttt{bed\_...jpg}. Liczebności klas przedstawiono w tabeli \ref{tab:class_counts_all}.
+Wykorzystano zbiór \textit{House Rooms \& Streets Image Dataset} z Kaggle \cite{kaggle_dataset}. Dataset zawiera katalogi \texttt{house\_data} oraz \texttt{street\_data}; w projekcie użyto wyłącznie katalogu \texttt{house\_data}, ponieważ dotyczył zdjęć wnętrz. Etykieta była zapisana w nazwie pliku jako prefiks, np. \texttt{bed\_...jpg}.
 
 \begin{table}[H]
 \centering
@@ -74,7 +81,7 @@ Razem & 5249 \\
 \end{tabular}
 \end{table}
 
-Klasę \texttt{bath} usunięto z finalnego eksperymentu, aby zachować zgodność z wcześniejszą wersją notebooka oraz skupić się na klasach o większej wzajemnej niejednoznaczności wizualnej. Po usunięciu tej klasy pozostały 4644 obrazy. Dane podzielono stratyfikacyjnie na zbiory treningowy, walidacyjny i testowy w proporcji 70\%/15\%/15\%. Ten sam podział był używany dla wszystkich modeli, co umożliwia bezpośrednie porównanie wyników.
+Klasę \texttt{bath} usunięto z finalnego eksperymentu, aby zachować zgodność z wcześniejszą wersją notebooka oraz skupić się na klasach bardziej podobnych wizualnie. Po usunięciu tej klasy pozostały 4644 obrazy. Dane podzielono stratyfikacyjnie na zbiory treningowy, walidacyjny i testowy w proporcji 70\%/15\%/15\%. Ten sam podział był używany dla wszystkich modeli.
 
 \begin{table}[H]
 \centering
@@ -94,40 +101,42 @@ Testowy & 188 & 173 & 145 & 191 & 697 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/sample_rooms_grid.png}
-\caption{Przykładowe obrazy z czterech klas użytych w eksperymencie.}
+\caption{Przykładowe obrazy z katalogu \texttt{house\_data}. W finalnych eksperymentach pominięto klasę \texttt{bath}.}
 \label{fig:samples}
 \end{figure}
 
-Podczas eksploracji danych zauważono, że klasy są dość zbalansowane, ale nie idealnie. Najmniej przykładów ma klasa \texttt{kitchen}, a najwięcej \texttt{living}. Różnice nie są na tyle duże, aby wymagały agresywnego oversamplingu, natomiast w funkcji straty zastosowano wagi klas obliczone na podstawie liczebności zbioru treningowego. Dzięki temu błędy w mniej licznej klasie nie są marginalizowane.
-
-Preprocessing był zależny od modelu:
-\begin{itemize}
-  \item MLP używał obrazów \(96 \times 96\), ponieważ większe wejście znacznie zwiększa liczbę wag w pierwszej warstwie gęstej.
-  \item Zwykły CNN bez augmentacji był oceniany dla najlepszego wariantu \(224 \times 224\).
-  \item Najlepsze modele CNN z augmentacją używały obrazów \(256 \times 256\).
-\end{itemize}
+Klasy są dość zbalansowane, ale nie idealnie. Najmniej przykładów ma klasa \texttt{kitchen}, a najwięcej \texttt{living}. W modelach \texttt{RoomResNet} zastosowano wagi klas obliczone na podstawie liczebności zbioru treningowego, natomiast proste modele CNN trenowano bez wag klas, aby utrzymać prostszą procedurę uczenia.
 
 Dla wszystkich modeli obrazy konwertowano do RGB, skalowano do odpowiedniego rozmiaru i normalizowano przy użyciu średniej oraz odchylenia standardowego ImageNet:
 \[
 \mu=(0.485, 0.456, 0.406), \qquad \sigma=(0.229, 0.224, 0.225).
 \]
-Normalizacja nie oznacza użycia transfer learningu; jest jedynie standardowym przeskalowaniem kanałów wejściowych.
+Ta normalizacja nie oznacza użycia transfer learningu; jest tylko standardowym przeskalowaniem kanałów wejściowych.
 
-\section{Architektury sieci i procedura uczenia}
+Jako główne metryki raportowano accuracy oraz macro F1. Macro F1 jest ważne w tym zadaniu, ponieważ traktuje wszystkie klasy równorzędnie i pokazuje, czy model nie poprawia wyniku kosztem jednej trudniejszej klasy. Finalne wyniki pochodzą z notebooka ewaluacyjnego \path{evaluate_trained_models.ipynb}. Główne warianty uruchomiono dla pięciu seedów: 42, 43, 44, 45 oraz 46.
 
-\subsection{Funkcja straty i metryki}
+\section{Wykorzystane technologie}
 
-Modele trenowano w PyTorch. Minimalizowaną funkcją straty była ważona entropia krzyżowa z label smoothing:
-\[
-\mathcal{L}(x, y) = - \sum_{c=1}^{C} w_c \tilde{y}_c \log p_c,
-\]
-gdzie \(w_c\) jest wagą klasy, \(p_c\) prawdopodobieństwem przewidywanym przez model, a \(\tilde{y}\) wygładzoną etykietą. W modelach z MixUp/CutMix funkcja straty obsługiwała również miękkie etykiety.
+Eksperymenty przygotowano jako zestaw skryptów treningowych w Pythonie oraz osobny notebook ewaluacyjny. Najważniejsze technologie pełniły następujące role:
 
-Jako główne metryki raportowano accuracy oraz macro F1. Macro F1 jest szczególnie istotne, ponieważ liczy średnią jakość po klasach, a nie po przykładach, więc lepiej pokazuje, czy model działa równomiernie na wszystkich kategoriach.
+\begin{itemize}
+  \item \textbf{Python} -- główny język implementacji pipeline'u treningowego, ewaluacji i agregacji wyników.
+  \item \textbf{PyTorch} -- implementacja architektur MLP, CNN i \texttt{RoomResNet}, pętli treningowej, funkcji straty, optymalizatorów, schedulerów, EMA wag, MixUp/CutMix oraz zapisu checkpointów.
+  \item \textbf{TorchVision} -- skalowanie obrazów i augmentacje, m.in. cropy, odbicia, jitter kolorów, RandAugment oraz RandomErasing.
+  \item \textbf{NumPy, pandas i scikit-learn} -- przygotowanie podziałów danych, liczenie metryk, macierzy pomyłek i agregacji wyników po seedach.
+  \item \textbf{Matplotlib, Seaborn i TensorBoard} -- wykresy treningu, porównania modeli, macierze pomyłek i monitoring metryk epokowych.
+  \item \textbf{Jupyter Notebook} -- końcowa ewaluacja wytrenowanych modeli, porównanie seedów, przygotowanie tabel i wykresów użytych w raporcie.
+  \item \textbf{CUDA i SLURM} -- uruchamianie treningów na klastrze GPU. Skrypty \texttt{sbatch} pozwalały odpalać wiele konfiguracji i seedów jako osobne joby.
+  \item \textbf{LaTeX i Tectonic} -- przygotowanie finalnego raportu PDF, spisu treści, tabel, równań i osadzenie wykresów z ewaluacji.
+\end{itemize}
 
-\subsection{Model bazowy MLP}
+\section{Kolejne eksperymenty modelowe}
 
-MLP użyto jako punktu odniesienia. Model nie wykorzystuje lokalnej struktury obrazu, ponieważ po warstwie \texttt{Flatten} traktuje obraz jako jeden długi wektor pikseli. Architektura MLP była następująca:
+\subsection{Eksperyment 1: MLP}
+
+Pierwszym punktem odniesienia był MLP. Model dostaje obraz po spłaszczeniu do jednego wektora pikseli, więc nie ma wbudowanego mechanizmu wykrywania lokalnych wzorców, takich jak krawędzie, narożniki, tekstury czy układ mebli. Ten eksperyment sprawdzał, jak daleko można dojść samymi warstwami gęstymi.
+
+Działanie MLP jest najprostsze ze wszystkich badanych modeli. Obraz RGB \(96 \times 96\) jest zamieniany na wektor liczb, a kolejne warstwy liniowe wykonują nieliniowe przekształcenia tego wektora. BatchNorm stabilizuje skalę aktywacji, ReLU wprowadza nieliniowość, a Dropout losowo zeruje część neuronów w czasie treningu, żeby ograniczyć zapamiętywanie zbioru treningowego. Ostatnia warstwa zwraca cztery logity, które po funkcji softmax można interpretować jako prawdopodobieństwa klas.
 
 \begin{table}[H]
 \centering
@@ -146,11 +155,36 @@ Wyjście & Linear(256, 4) \\
 \end{tabular}
 \end{table}
 
-Najlepszy wariant MLP uzyskano dla rozmiaru obrazu \(96 \times 96\), learning rate \(5 \cdot 10^{-4}\), weight decay \(10^{-4}\), dropout 0.50 i label smoothing 0.03. Model był trenowany z early stopping; najlepszy punkt walidacyjny wystąpił w 28. epoce.
+Najlepszy wariant MLP używał obrazów \(96 \times 96\), learning rate \(5 \cdot 10^{-4}\), weight decay \(10^{-4}\), dropout 0.50 i label smoothing 0.03. Większy rozmiar wejścia szybko zwiększał liczbę parametrów w pierwszej warstwie, dlatego MLP nie był sensownym miejscem na wysoką rozdzielczość.
 
-\subsection{Własna sieć CNN typu ResNet}
+\subsection{Eksperyment 2: proste CNN bez augmentacji}
 
-Główny model konwolucyjny to własna architektura \texttt{RoomResNet}, trenowana od zera. Nie użyto gotowej sieci ani wag pretrenowanych. Architektura łączy bloki rezydualne, BatchNorm, aktywację SiLU, Squeeze-and-Excitation oraz global average pooling.
+Drugim krokiem było proste CNN trenowane bez augmentacji. W porównaniu z MLP model konwolucyjny zachowuje informację o lokalnym sąsiedztwie pikseli i współdzieli wagi w różnych miejscach obrazu. Dzięki temu może uczyć się cech wizualnych niezależnie od ich dokładnego położenia.
+
+Mechanika działania CNN polega na budowaniu map cech. Warstwy Conv2D przesuwają małe filtry po obrazie i wykrywają lokalne wzorce, np. krawędzie, kontrasty, tekstury oraz proste fragmenty obiektów. Po konwolucjach stosowany jest MaxPool, który zmniejsza rozdzielczość map cech i zostawia najsilniejsze aktywacje. Dzięki temu kolejne warstwy widzą coraz większy kontekst obrazu, a model staje się mniej wrażliwy na niewielkie przesunięcia mebli lub elementów sceny. Na końcu mapy cech są spłaszczane i przekazywane do klasyfikatora liniowego.
+
+Proste CNN składało się wyłącznie z warstw Conv2D, BatchNorm, ReLU, MaxPool, Dropout oraz Linear. Nie użyto bloków rezydualnych, Squeeze-and-Excitation, MixUp/CutMix ani transfer learningu. Modele bez augmentacji trenowano na deterministycznie przeskalowanych obrazach, bez losowych modyfikacji danych wejściowych. W tej grupie porównano wariant z mocnym downscalem do \(64 \times 64\) oraz wariant \(224 \times 224\).
+
+\subsection{Eksperyment 3: proste CNN z augmentacją}
+
+Trzeci eksperyment sprawdzał wpływ augmentacji przy tej samej rodzinie prostych CNN. W ramach danej rozdzielczości architektura CNN i CNN+aug była taka sama; różniły się dane widziane w czasie treningu. Celem było oddzielenie wpływu samej architektury od wpływu losowych przekształceń obrazu.
+
+Działanie augmentacji polega na tym, że model nie dostaje w każdej epoce dokładnie tych samych obrazów. Transformacje są nakładane w locie podczas generowania batchy treningowych. Dzięki temu sieć widzi wiele lekko zmienionych wersji tych samych zdjęć i trudniej jej zapamiętać konkretne piksele. Wymusza to uczenie bardziej ogólnych cech pomieszczenia, np. układu przestrzeni, obecności blatów, łóżek, stołów czy kanap, a nie dokładnego kadru jednego pliku.
+
+Dla prostych CNN z augmentacją użyto lekkiego profilu:
+\begin{itemize}
+  \item losowe odbicie poziome z prawdopodobieństwem 0.5,
+  \item losowe przemnożenie jasności przez wartość z zakresu 0.8--1.2 z prawdopodobieństwem 0.5,
+  \item losowe przesunięcie cykliczne obrazu do 4 pikseli z prawdopodobieństwem 0.5.
+\end{itemize}
+
+\subsection{Eksperyment 4: ResNet bez augmentacji}
+
+Następnie sprawdzono mocniejszą architekturę konwolucyjną trenowaną od zera. Model nazwano \texttt{RoomResNet}. Jest to własna sieć typu ResNet, a nie gotowy model z biblioteki. Architektura wykorzystuje ideę połączeń rezydualnych \cite{resnet} oraz modułów Squeeze-and-Excitation \cite{senet}; łączy bloki rezydualne, BatchNorm, aktywację SiLU i global average pooling.
+
+W tym modelu obraz przechodzi przez kolejne etapy rezydualne. Każdy etap zwiększa liczbę kanałów, czyli liczbę wykrywanych typów cech, a jednocześnie stopniowo redukuje rozdzielczość map cech. Początkowe warstwy uczą się prostych wzorców, takich jak krawędzie i tekstury. Głębsze warstwy łączą je w bardziej abstrakcyjne informacje o scenie, np. układ dużych mebli, obecność stołu, łóżka albo fragmentów kuchni. Global average pooling zamienia końcowe mapy cech na jeden wektor opisujący cały obraz, a klasyfikator liniowy przypisuje ten wektor do jednej z czterech klas.
+
+Połączenia rezydualne ułatwiają uczenie głębszej sieci, ponieważ blok nie musi od nowa uczyć całej transformacji. Może nauczyć się tylko poprawki dodawanej do wejścia bloku. Moduł Squeeze-and-Excitation dodatkowo waży kanały cech: wzmacnia te, które są ważne dla danej fotografii, i osłabia mniej istotne.
 
 Pojedynczy blok rezydualny ma postać:
 \[
@@ -164,8 +198,6 @@ x &\rightarrow \text{Conv}_{3\times3} \rightarrow \text{BN} \rightarrow \text{Si
 \end{aligned}
 \]
 Jeżeli liczba kanałów lub rozdzielczość zmienia się między wejściem i wyjściem bloku, shortcut zawiera konwolucję \(1 \times 1\) ze stride.
-
-Moduł Squeeze-and-Excitation \cite{senet} najpierw wykonuje global average pooling, następnie przechodzi przez dwie konwolucje \(1 \times 1\) i funkcję sigmoid. W ten sposób model uczy się ważenia kanałów cech.
 
 \begin{table}[H]
 \centering
@@ -182,52 +214,60 @@ large & 64 & 80, 160, 320, 512 & 2, 3, 4, 2 & ok. 17.63 mln \\
 \end{tabular}
 \end{table}
 
-Finalnie najlepsze wyniki dawał wariant \texttt{large}. Jego dokładna struktura składa się z:
-\begin{itemize}
-  \item dwóch konwolucji wejściowych \(3 \times 3\) z 64 kanałami,
-  \item czterech etapów rezydualnych o kanałach 80, 160, 320 i 512,
-  \item liczby bloków w etapach równej odpowiednio 2, 3, 4 i 2,
-  \item global average pooling do wektora 512,
-  \item klasyfikatora Linear(512, 256) + SiLU + Dropout + Linear(256, 4).
-\end{itemize}
+Wariant bez augmentacji był ważną kontrolą: pokazywał, czy sama większa architektura wystarczy do poprawy generalizacji. Model był oceniany dla wejścia \(224 \times 224\).
 
-Wariant CNN bez augmentacji był trenowany bez jakichkolwiek losowych modyfikacji obrazu. To ważne rozróżnienie: zwykły CNN miał służyć jako kontrola, a CNN+aug jako wariant pokazujący wpływ augmentacji i regularizacji danych.
+\subsection{Eksperyment 5: ResNet z augmentacją i ensemble}
 
-\subsection{CNN z augmentacją danych}
+Ostatnim i najbardziej zaawansowanym wariantem był \texttt{RoomResNet} trenowany z silną augmentacją. Użyto tej samej rodziny architektur, ale zmieniono procedurę uczenia i przetwarzania danych.
 
-Wariant CNN+aug używa tej samej rodziny architektur \texttt{RoomResNet}. Różni się procedurą treningową i przetwarzaniem danych. W profilu augmentacji \texttt{strong} zastosowano:
+Ten eksperyment łączył trzy mechanizmy poprawiające generalizację. Pierwszym była silna augmentacja obrazu, która symulowała różne kadry, perspektywy, jasność i drobne zniekształcenia. Drugim były MixUp \cite{mixup} i CutMix \cite{cutmix}, które utrudniały modelowi podejmowanie zbyt pewnych decyzji na podstawie pojedynczych lokalnych fragmentów. Trzecim było TTA w ewaluacji: model oceniał kilka wersji tego samego obrazu, a końcowa predykcja była średnią prawdopodobieństw. W praktyce zmniejsza to wpływ jednego przypadkowego kadrowania na wynik.
+
+\noindent
+W profilu \texttt{strong} zastosowano:
 \begin{itemize}
   \item RandomResizedCrop do rozmiaru wejściowego, skala 0.62--1.00, proporcje 0.80--1.25,
   \item losowe odbicie poziome,
   \item ColorJitter dla jasności, kontrastu, nasycenia i barwy,
-  \item RandAugment z dwoma operacjami o sile 7,
+  \item RandAugment \cite{randaugment} z dwoma operacjami o sile 7,
   \item losową skalę szarości, autokontrast i zmianę ostrości,
   \item GaussianBlur,
   \item RandomAffine oraz RandomPerspective,
   \item RandomErasing po normalizacji.
 \end{itemize}
 
-Dodatkowo dla najlepszych modeli użyto MixUp \cite{mixup} i CutMix \cite{cutmix}. MixUp tworzy wypukłą kombinację dwóch obrazów i ich etykiet, a CutMix wkleja fragment jednego obrazu do drugiego i miesza etykiety proporcjonalnie do pola wklejonego fragmentu. Najlepszy model CNN+aug używał:
-\[
-\alpha_{\text{mixup}}=0.2, \qquad \alpha_{\text{cutmix}}=1.0, \qquad p_{\text{mix}}=0.45.
-\]
+Dodatkowo użyto MixUp i CutMix. MixUp tworzy wypukłą kombinację dwóch obrazów i etykiet, a CutMix wkleja fragment jednego obrazu do drugiego i miesza etykiety proporcjonalnie do pola wklejonego fragmentu. W ocenie modeli ResNet+aug zastosowano test-time augmentation (TTA): dla każdego obrazu wykonywano 5 predykcji i uśredniano prawdopodobieństwa.
 
-W ocenie modeli CNN+aug zastosowano test-time augmentation (TTA). Dla każdego obrazu wykonano 5 predykcji: jedną deterministyczną oraz dodatkowe losowe cropy/odbicia, a następnie uśredniono prawdopodobieństwa. Zwykły CNN i MLP były oceniane bez TTA.
-
-\subsection{Procedura uczenia i strojenie hiperparametrów}
-
-Wszystkie modele trenowano z optymalizatorem AdamW \cite{adamw}. Maksymalną liczbę epok ustawiono wysoko, ale trening kończono przez early stopping na podstawie macro F1 na zbiorze walidacyjnym. Dzięki temu modele mogły trenować długo, ale nie wybierano wag z końca uczenia, jeśli walidacja przestawała się poprawiać.
-
-Strojenie hiperparametrów wykonano etapowo:
-\begin{itemize}
-  \item dla MLP porównano warianty rozmiaru wejścia, learning rate, weight decay i dropout;
-  \item dla zwykłego CNN przeszukano warianty \texttt{medium}/\texttt{large}, learning rate \(3 \cdot 10^{-4}\) i \(5 \cdot 10^{-4}\), weight decay \(5 \cdot 10^{-4}\) i \(10^{-3}\), dropout 0.40 i 0.50;
-  \item dla CNN+aug wykonano grid search po learning rate, weight decay, dropout i prawdopodobieństwie MixUp/CutMix.
-\end{itemize}
+Na końcu zbudowano ensemble trzech najlepszych modeli ResNet+aug z grid searcha. W tabelach wyników oznaczono je jako A, B i C. Nie są to różne typy architektury: wszystkie trzy warianty używają \texttt{RoomResNet large}, silnej augmentacji, EMA wag i TTA. Różnią się wybranymi hiperparametrami uczenia, głównie learning rate, dropoutem w klasyfikatorze i prawdopodobieństwem użycia MixUp/CutMix.
 
 \begin{table}[H]
 \centering
-\caption{Najważniejsze hiperparametry najlepszego pojedynczego modelu CNN+aug.}
+\caption{Definicja wariantów ResNet+aug A/B/C używanych w tabelach wyników.}
+\label{tab:resnet_aug_variants}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Wariant & Learning rate & Weight decay & Dropout & \(p_{\text{mix}}\) \\
+\midrule
+ResNet+aug A & \(2 \cdot 10^{-4}\) & \(5 \cdot 10^{-4}\) & 0.40 & 0.45 \\
+ResNet+aug B & \(3 \cdot 10^{-4}\) & \(5 \cdot 10^{-4}\) & 0.40 & 0.30 \\
+ResNet+aug C & \(2 \cdot 10^{-4}\) & \(5 \cdot 10^{-4}\) & 0.45 & 0.45 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ensemble nie wymaga dodatkowego treningu. Dla każdego obrazu liczone są prawdopodobieństwa trzech modeli A, B i C, następnie są one uśredniane, a przewidywana klasa to argmax średniego wektora prawdopodobieństw.
+
+\section{Hiperparametry i rozdzielczość wejścia}
+
+\subsection{Wpływ hiperparametrów}
+
+Modele trenowano w PyTorch \cite{pytorch}. MLP oraz modele \texttt{RoomResNet} trenowano z optymalizatorem AdamW \cite{adamw}. Proste modele CNN trenowano optymalizatorem Adam, zgodnie z prostszą konfiguracją eksperymentu. Maksymalną liczbę epok ustawiono wysoko, ale trening kończono przez early stopping na podstawie macro F1 na zbiorze walidacyjnym. Dzięki temu modele mogły trenować długo, ale do ewaluacji wybierano najlepszy punkt walidacyjny.
+
+Strojenie hiperparametrów wykonano etapowo. Dla MLP sprawdzano rozmiar wejścia, learning rate, weight decay i dropout. Dla prostych CNN porównano rozdzielczość, wariant architektury, learning rate i dropout. Dla ResNet+aug wykonano grid search po learning rate, weight decay, dropout i prawdopodobieństwie MixUp/CutMix.
+
+\begin{table}[H]
+\centering
+\caption{Najważniejsze hiperparametry najlepszego pojedynczego modelu ResNet+aug.}
 \label{tab:best_hparams}
 \begin{tabular}{ll}
 \toprule
@@ -238,7 +278,7 @@ Rozmiar wejścia & \(256 \times 256\) \\
 Liczba parametrów & 17.63 mln \\
 Learning rate & \(2 \cdot 10^{-4}\) \\
 Weight decay & \(5 \cdot 10^{-4}\) \\
-Dropout w głowie & 0.40 \\
+Dropout w klasyfikatorze & 0.40 \\
 Label smoothing & 0.10 \\
 Scheduler & cosine decay z 12 epokami warmup \\
 EMA wag & 0.999 \\
@@ -248,118 +288,207 @@ TTA w ewaluacji & 5 predykcji na obraz \\
 \end{tabular}
 \end{table}
 
-Najlepszy pojedynczy model CNN+aug osiągnął najlepszy punkt walidacyjny w 206. epoce. W tym punkcie walidacyjne macro F1 wyniosło 0.8681, a accuracy 0.8694. Model trenowano łącznie 281 epok, po czym early stopping zatrzymał uczenie.
-
-Oprócz pojedynczych modeli zbudowano ensemble trzech najlepszych modeli CNN+aug z grid searcha. Ensemble nie wymaga dodatkowego treningu: dla każdego obrazu liczone są prawdopodobieństwa trzech modeli, następnie są one uśredniane, a przewidywana klasa to argmax średniego wektora prawdopodobieństw. W ensemble użyto modeli:
-\begin{itemize}
-  \item \texttt{lr2e4\_wd5e4\_d40\_m45},
-  \item \texttt{lr3e4\_wd5e4\_d40\_m30},
-  \item \texttt{lr2e4\_wd5e4\_d45\_m45}.
-\end{itemize}
-
-\section{Wyniki}
-
-Wyniki w tabeli \ref{tab:main_results} pochodzą z wykonanego notebooka ewaluacyjnego \texttt{evaluate\_trained\_models.ipynb}. Test obejmował 697 obrazów.
-
 \begin{table}[H]
 \centering
-\caption{Porównanie wyników na zbiorze testowym.}
-\label{tab:main_results}
-\begin{tabular}{lrrr}
+\caption{Najlepsze konfiguracje z grid searcha dla prostych CNN. Tabela pokazuje pojedyncze wyniki użyte do wyboru konfiguracji, natomiast finalna ocena po pięciu seedach znajduje się w tabeli \ref{tab:main_results}.}
+\label{tab:simple_cnn_grid_results}
+\small
+\begin{tabular}{@{}llrr@{}}
 \toprule
-Model & Accuracy & Macro F1 & TTA \\
+Grupa & Konfiguracja & Accuracy & Macro F1 \\
 \midrule
-MLP & 40.89\% & 40.80\% & 1 \\
-CNN bez augmentacji & 64.99\% & 65.23\% & 1 \\
-Najlepszy pojedynczy CNN+aug & 88.81\% & 88.70\% & 5 \\
-Ensemble top 3 CNN+aug & \textbf{89.81\%} & \textbf{89.70\%} & 5 \\
+CNN224+aug, wide & lr \(10^{-4}\), dropout 0.30 & 75.61\% & 75.83\% \\
+CNN224+aug, deep & lr \(10^{-4}\), dropout 0.45 & 75.47\% & 75.58\% \\
+CNN64+aug, deep & lr \(10^{-3}\), dropout 0.30 & 74.61\% & 74.79\% \\
+CNN224, deep & lr \(10^{-4}\), dropout 0.30 & 67.00\% & 67.04\% \\
+CNN64, deep & lr \(5 \cdot 10^{-4}\), dropout 0.30 & 62.70\% & 62.39\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Wyniki pokazują bardzo wyraźną różnicę między MLP a modelami konwolucyjnymi. MLP osiąga tylko 40.80\% macro F1, ponieważ po spłaszczeniu obrazu traci informację o lokalnym sąsiedztwie pikseli. Zwykły CNN poprawia wynik do 65.23\% macro F1, ale bardzo silnie przeucza się do zbioru treningowego. W jego historii treningowej accuracy treningowe dochodziło do prawie 100\%, podczas gdy walidacja pozostawała w okolicach 65\%.
+W przykładowym runie dla seeda 42 najlepszy pojedynczy model ResNet+aug osiągnął najlepszy punkt walidacyjny w 206. epoce. W tym punkcie walidacyjne macro F1 wyniosło 0.8681, a accuracy 0.8694. W powtórzeniach po pięciu seedach najlepsze punkty walidacyjne dla wariantów ResNet+aug pojawiały się zwykle po kilkuset epokach, co uzasadnia wysoki limit epok oraz łagodny early stopping.
 
-Największy wzrost jakości daje augmentacja. Najlepszy pojedynczy model CNN+aug osiąga 88.70\% macro F1, czyli ponad 23 punkty procentowe więcej niż zwykły CNN. Ensemble trzech modeli poprawia wynik do 89.70\% macro F1.
+\subsection{Wpływ downscale'u}
+
+Osobnym eksperymentem był wpływ rozdzielczości wejścia. Downscale do \(64 \times 64\) upraszcza uczenie, bo znacząco zmniejsza liczbę cech i koszt obliczeniowy, ale usuwa wiele szczegółów: drobne obiekty, faktury, układ blatów, lamp, krzeseł czy przejść między pomieszczeniami. Dla obrazów wnętrz te szczegóły mogą być istotne.
+
+Przejście z \(64 \times 64\) na \(224 \times 224\) nie polegało jednak tylko na podaniu większego obrazu do tej samej sieci. Przy większej rozdzielczości mapy cech pozostają dużo większe po kolejnych poolingach. Jeżeli architektura ma za mało etapów redukcji rozdzielczości, część gęsta dostaje bardzo długi wektor cech. To zwiększa liczbę parametrów, utrudnia optymalizację i sprzyja przeuczeniu. Dlatego warianty bez silnego downscale'u wymagały większej architektury: dodatkowego etapu konwolucyjnego, większej liczby poolingów i klasyfikatora dopasowanego do map cech po redukcji.
+
+\begin{table}[H]
+\centering
+\caption{Poprawione warianty prostych CNN użyte w eksperymencie z downscalem. Każdy etap kończy się MaxPool \(2 \times 2\). Kolumna FC podaje kolejne rozmiary warstw liniowych.}
+\label{tab:simple_cnn_arch}
+\small
+\begin{tabular}{@{}llllr@{}}
+\toprule
+Wariant & Kanały & Konw. & FC & Parametry \\
+\midrule
+CNN64 & 32--64--128--256 & 2--2--2--1 & 4096--384--192--4 & 2.23 mln \\
+CNN224 wide & 32--64--128--192--256 & 2--2--2--1--1 & 12544--256--128--4 & 4.20 mln \\
+CNN224 deep & 32--64--128--192--256 & 2--2--2--2--2 & 12544--384--192--4 & 6.77 mln \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Warianty \(224 \times 224\) mają pięć operacji MaxPool, więc rozdzielczość map cech zmniejsza się z \(224\) do \(7\). Dla porównania, przy \(64 \times 64\) podobna liczba redukcji daje znacznie mniejsze mapy cech. To wyjaśnia, dlaczego model bez downscale'u musiał być większy: zachowuje więcej informacji z obrazu, ale potrzebuje dodatkowych warstw, żeby stopniowo zamienić dużą mapę pikseli na zwarty wektor cech.
+
+\section{Wyniki eksperymentów}
+
+\subsection{Porównanie modeli w kolejności zaawansowania}
+
+Tabela \ref{tab:main_results} pokazuje finalne wyniki na zbiorze testowym po pięciu seedach. W tabeli zachowano kolejność eksperymentów: od MLP, przez proste CNN i CNN+aug, do ResNet oraz ResNet+aug. Warianty ResNet+aug A/B/C odpowiadają konfiguracjom z tabeli \ref{tab:resnet_aug_variants}. Skrót RRN na wykresach oznacza \texttt{RoomResNet}.
+
+\begin{table}[H]
+\centering
+\caption{Porównanie wyników na zbiorze testowym po pięciu seedach. Wartości podano w procentach jako średnia \(\pm\) odchylenie standardowe.}
+\label{tab:main_results}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Model & Accuracy & Macro recall & Macro F1 & TTA \\
+\midrule
+MLP & 40.43\(\pm\)0.49 & 40.42\(\pm\)0.45 & 40.21\(\pm\)0.56 & 1 \\
+CNN64 & 62.18\(\pm\)2.98 & 61.82\(\pm\)3.24 & 62.05\(\pm\)3.14 & 1 \\
+CNN224 & 65.82\(\pm\)1.48 & 65.96\(\pm\)1.61 & 65.86\(\pm\)1.60 & 1 \\
+CNN64+aug & 63.44\(\pm\)21.02 & 62.99\(\pm\)21.47 & 62.01\(\pm\)24.15 & 1 \\
+CNN224+aug & 73.40\(\pm\)1.66 & 73.38\(\pm\)1.65 & 73.60\(\pm\)1.60 & 1 \\
+ResNet no aug & 55.01\(\pm\)1.57 & 55.24\(\pm\)1.55 & 54.82\(\pm\)1.91 & 1 \\
+ResNet+aug A & 86.77\(\pm\)1.69 & 86.71\(\pm\)1.73 & 86.68\(\pm\)1.66 & 5 \\
+ResNet+aug B & 86.60\(\pm\)2.14 & 86.52\(\pm\)2.15 & 86.48\(\pm\)2.09 & 5 \\
+ResNet+aug C & 86.48\(\pm\)1.53 & 86.40\(\pm\)1.49 & 86.35\(\pm\)1.47 & 5 \\
+Ensemble & \textbf{87.26\(\pm\)1.78} & \textbf{87.20\(\pm\)1.81} & \textbf{87.15\(\pm\)1.75} & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Wyniki dobrze pokazują sens kolejnych eksperymentów. MLP osiąga tylko 40.21\% macro F1, bo ignoruje strukturę przestrzenną obrazu. Proste CNN bez augmentacji poprawia wynik do 62.05--65.86\% macro F1. Dodanie lekkiej augmentacji do wariantu \(224 \times 224\) podnosi wynik do 73.60\% macro F1, czyli daje większy zysk niż sama zmiana architektury w obrębie prostego CNN.
+
+Sam ResNet bez augmentacji nie daje dobrego wyniku. To ważna obserwacja: większa architektura bez odpowiedniej regularizacji może przeuczać się do zbioru treningowego i nie musi generalizować lepiej od prostszego CNN. Dopiero połączenie ResNet, silnej augmentacji, MixUp/CutMix, EMA wag i TTA daje skok do około 86--87\% macro F1. Ensemble trzech modeli ResNet+aug uzyskuje najwyższą średnią, 87.15\% macro F1.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/model_comparison_macro_f1.png}
+\caption{Średnie macro F1 oraz odchylenie standardowe po pięciu seedach.}
+\label{fig:seeded_macro_f1}
+\end{figure}
+
+Wariant CNN64+aug ma bardzo duże odchylenie standardowe. Wynika to z jednego nieudanego runa dla seeda 44, w którym macro F1 spadło do 18.92\%. Pozostałe seedy tego wariantu były bliżej zakresu 69.93--74.28\% macro F1. Wynik zachowano w średniej, ponieważ był częścią zaplanowanego eksperymentu i pokazuje niestabilność tej konfiguracji.
+
+\subsection{Różnice między eksperymentami i przebieg treningu}
+
+Tabela \ref{tab:paired_differences} pokazuje różnice macro F1 liczone parami po tych samych seedach. Przedziały ufności są orientacyjne, ponieważ liczba seedów jest mała (\(n=5\)), ale pomagają odróżnić duże efekty od kosmetycznych różnic.
+
+\begin{table}[H]
+\centering
+\caption{Różnice macro F1 między wybranymi parami modeli. Wartości podano w punktach procentowych.}
+\label{tab:paired_differences}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Porównanie & Średnia różnica & 95\% CI \\
+\midrule
+Ensemble vs ResNet+aug A & +0.47 & [-0.06, 1.00] \\
+Ensemble vs CNN224+aug & +13.54 & [11.81, 15.28] \\
+CNN224+aug vs CNN224 & +7.74 & [5.40, 10.08] \\
+Ensemble vs ResNet no aug & +32.32 & [28.07, 36.58] \\
+CNN224 vs ResNet no aug & +11.04 & [7.65, 14.42] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Największe efekty dotyczą augmentacji i kompletnej procedury uczenia. CNN224+aug jest średnio o 7.74 punktu procentowego lepszy od CNN224. Ensemble ResNet+aug jest o 13.54 punktu lepszy od CNN224+aug i o 32.32 punktu lepszy od ResNet bez augmentacji. Różnica między ensemble a najlepszym pojedynczym ResNet+aug jest natomiast mała, więc ensemble traktujemy jako dodatkową stabilizację, a nie główne źródło poprawy.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/training_curves_validation.png}
+\caption{Przebieg walidacyjnego macro F1 i walidacyjnej straty dla wybranych modeli. Linie oznaczają średnią po seedach, a obszary odchylenie standardowe.}
+\label{fig:seeded_training_curves}
+\end{figure}
+
+Krzywe treningu potwierdzają obserwacje z tabeli wyników. MLP szybko dochodzi do niskiego plateau. Prosty CNN \(224 \times 224\) uczy się wyraźnie lepiej, ale jego walidacyjne macro F1 stabilizuje się niżej niż dla modeli z augmentacją. ResNet+aug trenuje dłużej, a najlepsze punkty walidacyjne pojawiają się zwykle po kilkuset epokach.
 
 \subsection{Wyniki per klasa}
 
 \begin{table}[H]
 \centering
-\caption{Metryki per klasa dla finalnego ensemble.}
+\caption{Metryki per klasa dla finalnego ensemble po pięciu seedach. Wartości podano jako średnia \(\pm\) odchylenie standardowe.}
 \label{tab:per_class_ensemble}
+\small
 \begin{tabular}{lrrrr}
 \toprule
 Klasa & Precision & Recall & F1 & Support \\
 \midrule
-\texttt{bed} & 0.914 & 0.957 & 0.935 & 188 \\
-\texttt{din} & 0.893 & 0.873 & 0.883 & 173 \\
-\texttt{kitchen} & 0.868 & 0.910 & 0.889 & 145 \\
-\texttt{living} & 0.911 & 0.853 & 0.881 & 191 \\
+\texttt{bed} & 91.30\(\pm\)0.60 & 92.66\(\pm\)3.06 & 91.96\(\pm\)1.56 & 188 \\
+\texttt{din} & 85.04\(\pm\)2.62 & 84.62\(\pm\)2.22 & 84.82\(\pm\)2.30 & 173 \\
+\texttt{kitchen} & 85.71\(\pm\)1.27 & 86.90\(\pm\)3.23 & 86.28\(\pm\)2.01 & 145 \\
+\texttt{living} & 86.50\(\pm\)3.62 & 84.61\(\pm\)2.05 & 85.52\(\pm\)2.42 & 191 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Najłatwiejszą klasą dla finalnego modelu jest \texttt{bed}, dla której recall wynosi 95.7\%. Najtrudniejsze pozostają \texttt{din} oraz \texttt{living}; są to klasy często współwystępujące wizualnie, np. w otwartych przestrzeniach typu salon z jadalnią.
+Najłatwiejszą klasą dla finalnego modelu pozostaje \texttt{bed}, dla której średni recall wynosi 92.66\%. Najtrudniejsze są \texttt{din} oraz \texttt{living}, których recall wynosi około 84.6\%. Są to klasy często współwystępujące wizualnie, np. w otwartych przestrzeniach typu salon z jadalnią.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/per_class_recall_comparison.png}
+\caption{Recall per klasa dla wybranych modeli. Słupki pokazują średnią po seedach, a kreski odchylenie standardowe.}
+\label{fig:per_class_recall}
+\end{figure}
 
 \subsection{Macierze pomyłek}
 
+Macierze pomyłek są zależne od konkretnego seeda, dlatego w tabelach poniżej pokazano reprezentatywny seed 42. W tym seedzie ensemble uzyskało 90.12\% macro F1, czyli wynik wyższy niż średnia z pięciu powtórzeń.
+
 \begin{table}[H]
 \centering
-\caption{Macierz pomyłek finalnego ensemble. Wiersze oznaczają klasy prawdziwe, kolumny predykcje.}
+\caption{Macierz pomyłek ensemble dla seeda 42. Wiersze oznaczają klasy prawdziwe, kolumny predykcje.}
 \label{tab:cm_ensemble}
 \begin{tabular}{lrrrr}
 \toprule
  & \texttt{bed} & \texttt{din} & \texttt{kitchen} & \texttt{living} \\
 \midrule
-\texttt{bed} & 180 & 0 & 2 & 6 \\
+\texttt{bed} & 181 & 0 & 2 & 5 \\
 \texttt{din} & 3 & 151 & 12 & 7 \\
-\texttt{kitchen} & 2 & 8 & 132 & 3 \\
-\texttt{living} & 12 & 10 & 6 & 163 \\
+\texttt{kitchen} & 2 & 8 & 133 & 2 \\
+\texttt{living} & 11 & 10 & 6 & 164 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.70\textwidth]{python_training/outputs/reports/notebook_final_eval/ensemble_top3_cnn_aug_tta5/ensemble_top3_cnn_aug_tta5.test.confusion_matrix.png}
-\caption{Macierz pomyłek finalnego ensemble zapisana przez notebook ewaluacyjny.}
+\includegraphics[width=0.70\textwidth]{figures/final_ensemble_confusion_matrix.png}
+\caption{Macierz pomyłek ensemble dla seeda 42 zapisana przez notebook ewaluacyjny.}
 \label{fig:cm_ensemble}
 \end{figure}
 
-Dla porównania, zwykły CNN bez augmentacji osiągał dużo niższy wynik i częściej mylił \texttt{living} z \texttt{bed} oraz \texttt{din}. Jego macierz pomyłek przedstawiono w tabeli \ref{tab:cm_cnn_plain}.
+Dla porównania, \texttt{RoomResNet} bez augmentacji w tym samym seedzie znacznie częściej mylił \texttt{living} z \texttt{bed} oraz \texttt{din}. Jego macierz pomyłek przedstawiono w tabeli \ref{tab:cm_cnn_plain}.
 
 \begin{table}[H]
 \centering
-\caption{Macierz pomyłek najlepszego zwykłego CNN bez augmentacji.}
+\caption{Macierz pomyłek \texttt{RoomResNet} bez augmentacji dla seeda 42.}
 \label{tab:cm_cnn_plain}
 \begin{tabular}{lrrrr}
 \toprule
  & \texttt{bed} & \texttt{din} & \texttt{kitchen} & \texttt{living} \\
 \midrule
-\texttt{bed} & 135 & 9 & 10 & 34 \\
-\texttt{din} & 14 & 107 & 17 & 35 \\
-\texttt{kitchen} & 14 & 19 & 98 & 14 \\
-\texttt{living} & 36 & 29 & 13 & 113 \\
+\texttt{bed} & 136 & 10 & 18 & 24 \\
+\texttt{din} & 27 & 70 & 33 & 43 \\
+\texttt{kitchen} & 27 & 11 & 88 & 19 \\
+\texttt{living} & 71 & 24 & 21 & 75 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \section{Podsumowanie}
 
-Projekt pokazuje, że dla klasyfikacji obrazów pomieszczeń sama architektura CNN nie wystarcza. Zwykły model konwolucyjny trenowany bez augmentacji uczy się zbioru treningowego bardzo dobrze, ale generalizuje ograniczenie. Wynik 65.23\% macro F1 wskazuje na silne przeuczenie.
+Eksperymenty pokazują stopniową drogę od prostego baseline'u do modelu końcowego. MLP jest zbyt słaby dla obrazów pomieszczeń, ponieważ ignoruje strukturę przestrzenną obrazu. Proste CNN wyraźnie poprawia wynik, a przejście z \(64 \times 64\) na \(224 \times 224\) pomaga, bo zachowuje więcej informacji wizualnej. Wariant bez downscale'u wymaga jednak większej architektury, ponieważ większe mapy cech muszą zostać stopniowo zredukowane przed klasyfikatorem.
 
-Największą poprawę uzyskano przez połączenie kilku elementów: mocniejszej architektury rezydualnej, dużej rozdzielczości wejścia, silnej augmentacji, MixUp/CutMix, EMA wag, schedulera cosine z warmupem oraz TTA w ewaluacji. Najlepszy pojedynczy model CNN+aug osiągnął 88.70\% macro F1, a ensemble trzech modeli poprawił wynik do 89.70\% macro F1.
+Najważniejsza poprawa pojawia się po dodaniu augmentacji. W prostych CNN augmentacja podnosi wynik wariantu \(224 \times 224\) z 65.86\% do 73.60\% macro F1. W przypadku ResNet różnica jest jeszcze większa: ResNet bez augmentacji osiąga 54.82\% macro F1, a ResNet+aug około 86--87\% macro F1. Oznacza to, że sama mocniejsza architektura nie wystarcza. Dla tego zadania kluczowe są dane widziane w czasie treningu, regularizacja i odporność na zmiany perspektywy, kadru oraz oświetlenia.
 
-Najważniejsze wnioski:
-\begin{itemize}
-  \item MLP jest zbyt słaby dla tego zadania, ponieważ ignoruje przestrzenną strukturę obrazu.
-  \item CNN bez augmentacji wyraźnie przewyższa MLP, ale nadal przeucza się do danych treningowych.
-  \item Augmentacja jest kluczowym składnikiem rozwiązania; odpowiada za największy wzrost jakości.
-  \item Ensemble daje dodatkową, mniejszą, ale stabilną poprawę względem najlepszego pojedynczego modelu.
-  \item Najtrudniejsze pomyłki dotyczą klas semantycznie podobnych, zwłaszcza \texttt{din}, \texttt{kitchen} i \texttt{living}.
-\end{itemize}
+Finalny ensemble trzech modeli ResNet+aug osiągnął średnio 87.15\% macro F1 po pięciu seedach. Pojedynczy seed 42 dawał wynik ponad 90\% macro F1, ale średnia z pięciu seedów jest bardziej wiarygodną oceną jakości. Najtrudniejsze pomyłki dotyczą klas semantycznie podobnych, zwłaszcza \texttt{din}, \texttt{kitchen} i \texttt{living}.
 
-Dalszą poprawę można byłoby uzyskać przez ręczne przejrzenie błędnie sklasyfikowanych obrazów, dodatkową kalibrację ensemble oraz ewentualne wykorzystanie większej liczby seedów. W projekcie świadomie nie zastosowano transfer learningu; jego użycie prawdopodobnie mogłoby podnieść wynik, ale zmieniłoby charakter porównania.
+Dalszą poprawę można byłoby uzyskać przez ręczne przejrzenie błędnie sklasyfikowanych obrazów, dodatkową kalibrację ensemble oraz ponowne zbadanie niestabilnych konfiguracji, takich jak CNN64+aug. W projekcie świadomie nie zastosowano transfer learningu; jego użycie prawdopodobnie podniosłoby wynik, ale zmieniłoby charakter porównania.
 
 \begin{thebibliography}{9}
 

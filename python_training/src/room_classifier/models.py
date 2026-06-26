@@ -251,7 +251,7 @@ def _lecture_stage(
 
 
 class LectureCNNClassifier(nn.Module):
-    """Lecture-scope CNNs: Julia/Flux port plus VGG-style improvements."""
+    """Simple CNN family: original notebook topology plus VGG-style improvements."""
 
     def __init__(
         self,
@@ -347,7 +347,7 @@ class LectureCNNClassifier(nn.Module):
             second_hidden_units = 192
         else:
             raise ValueError(
-                "Unsupported lecture CNN configuration. Use variant='notebook' with topology 1/2/3, "
+                "Unsupported simple CNN configuration. Use variant='notebook' with topology 1/2/3, "
                 "or variant in {'wide', 'deep', 'highres_wide', 'highres_deep'}."
             )
 
@@ -455,7 +455,7 @@ def build_from_metadata(metadata: dict[str, Any], num_classes: int) -> nn.Module
             dropout=float(metadata["dropout"]),
             arch=metadata.get("arch", "small"),
         )
-    if model_type in {"lecture_cnn", "lecture_cnn_aug"}:
+    if model_type in {"lecture_cnn", "lecture_cnn_aug", "simple_cnn", "simple_cnn_aug"}:
         return build_lecture_cnn(
             num_classes=num_classes,
             img_size=int(metadata["img_size"]),

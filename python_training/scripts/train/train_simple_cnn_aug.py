@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from room_classifier.data import default_data_dir, load_or_create_split, make_loaders, split_summary
@@ -15,10 +15,11 @@ from room_classifier.train_utils import get_device, set_seed, train_model
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train Julia-notebook CNN topology without data augmentation.")
+    parser = argparse.ArgumentParser(description="Train a simple CNN with lightweight data augmentation.")
     parser.add_argument("--data-dir", type=Path, default=default_data_dir())
     parser.add_argument("--split-csv", type=Path, default=ROOT / "splits" / "room_split_seed42.csv")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "outputs" / "checkpoints")
+    parser.add_argument("--tensorboard-dir", type=Path, default=None)
     parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--img-size", type=int, default=64)
@@ -32,7 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dropout", type=float, default=0.30)
     parser.add_argument("--batch-norm", action="store_true")
     parser.add_argument("--class-weights", action="store_true")
-    parser.add_argument("--patience", type=int, default=40)
+    parser.add_argument("--augment-strength", default="julia", choices=["julia"])
+    parser.add_argument("--patience", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--device", default="auto")
@@ -60,7 +62,8 @@ def main() -> None:
         img_size=args.img_size,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        augment_train=False,
+        augment_train=True,
+        augment_strength=args.augment_strength,
     )
 
     device = get_device(args.device)
@@ -73,7 +76,7 @@ def main() -> None:
         variant=args.variant,
     )
     topology_suffix = f"_t{args.topology}" if args.variant == "notebook" else ""
-    arch = f"lecture_{args.variant}{topology_suffix}_bn{int(args.batch_norm)}"
+    arch = f"simple_{args.variant}{topology_suffix}_bn{int(args.batch_norm)}"
     print(f"model={arch} trainable_params={count_parameters(model):,}")
 
     criterion_weight = weights.to(device) if args.class_weights else None
@@ -81,7 +84,7 @@ def main() -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     metadata = {
-        "model_type": "lecture_cnn",
+        "model_type": "simple_cnn_aug",
         "arch": arch,
         "variant": args.variant,
         "topology": args.topology,
@@ -89,6 +92,8 @@ def main() -> None:
         "dropout": args.dropout,
         "batch_norm": args.batch_norm,
         "trainable_params": count_parameters(model),
+        "augment_strength": args.augment_strength,
+        "augmentation_details": "horizontal flip p=0.5, brightness multiplier 0.8..1.2 p=0.5, circular shift up to 4 px p=0.5",
         "class_names": info.class_names,
         "train_counts": info.train_counts,
         "exclude_classes": exclude_classes,
@@ -96,8 +101,10 @@ def main() -> None:
         "optimizer": "Adam",
         "lr": args.lr,
         "class_weights": args.class_weights,
-        "uses_augmentation": False,
-        "source": "Julia notebook CNN topology port" if args.variant == "notebook" else "Improved lecture-scope CNN",
+        "uses_augmentation": True,
+        "source": "Original simple CNN topology and augmentation port"
+        if args.variant == "notebook"
+        else "Improved simple CNN with lightweight augmentation",
     }
     train_model(
         model=model,
@@ -108,8 +115,9 @@ def main() -> None:
         device=device,
         epochs=args.epochs,
         patience=args.patience,
-        checkpoint_path=args.output_dir / "lecture_cnn_best.pt",
+        checkpoint_path=args.output_dir / "simple_cnn_aug_best.pt",
         metadata=metadata,
+        tensorboard_dir=args.tensorboard_dir,
     )
 
 
